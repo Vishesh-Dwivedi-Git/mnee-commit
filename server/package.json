@@ -1,0 +1,25 @@
+{
+  "name": "commit-protocol",
+  "version": "1.0.0",
+  "description": "Commit Protocol - Server-enforced financial primitive using MNEE SDK",
+  "main": "out/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node out/index.js"
+  },
+  "dependencies": {
+    "@mnee/ts-sdk": "^1.0.0",
+    "better-sqlite3": "^11.7.0",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.9.3"
+  }
+}
