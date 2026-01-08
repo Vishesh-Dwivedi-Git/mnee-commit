@@ -19,17 +19,18 @@ export const commitRouter = Router();
 
 /**
  * POST /commit/create
- * Create a new commitment
+ * Create a new commitment (off-chain record)
+ * User must then call createCommit() on smart contract to fund escrow
  */
 commitRouter.post('/create', async (req: Request, res: Response) => {
   try {
     const input = req.body as CreateCommitmentRequest;
 
     // Validate required fields
-    if (!input.clientWif || !input.clientAddress || !input.contributorAddress) {
+    if (!input.clientAddress || !input.contributorAddress) {
       res.status(400).json({
         success: false,
-        error: 'Missing required fields: clientWif, clientAddress, contributorAddress',
+        error: 'Missing required fields: clientAddress, contributorAddress',
       } satisfies ApiResponse<never>);
       return;
     }
@@ -75,7 +76,8 @@ commitRouter.post('/create', async (req: Request, res: Response) => {
 
 /**
  * POST /commit/deliver
- * Mark a commitment as delivered
+ * Submit work for a commitment
+ * Triggers AI verification agents
  */
 commitRouter.post('/deliver', async (req: Request, res: Response) => {
   try {
@@ -117,7 +119,7 @@ commitRouter.post('/deliver', async (req: Request, res: Response) => {
  * GET /commit/:id
  * Get commitment details by ID
  */
-commitRouter.get('/:id', (req: Request, res: Response) => {
+commitRouter.get('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
@@ -129,7 +131,7 @@ commitRouter.get('/:id', (req: Request, res: Response) => {
       return;
     }
 
-    const commitment = getCommitment(id);
+    const commitment = await getCommitment(id);
 
     if (!commitment) {
       res.status(404).json({
@@ -156,7 +158,7 @@ commitRouter.get('/:id', (req: Request, res: Response) => {
  * GET /commit/list/:address
  * List commitments for an address (as client or contributor)
  */
-commitRouter.get('/list/:address', (req: Request, res: Response) => {
+commitRouter.get('/list/:address', async (req: Request, res: Response) => {
   try {
     const { address } = req.params;
 
@@ -168,7 +170,7 @@ commitRouter.get('/list/:address', (req: Request, res: Response) => {
       return;
     }
 
-    const commitments = listCommitments(address);
+    const commitments = await listCommitments(address);
 
     res.status(200).json({
       success: true,

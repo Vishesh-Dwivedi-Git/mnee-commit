@@ -1,8 +1,8 @@
 import 'dotenv/config';
 import express from 'express';
 
-import { initializeDatabase } from './db/index.js';
-import { validateMneeConfig } from './config/mnee.js';
+import { initializeDatabase, disconnectDatabase } from './db/index.js';
+import { validateConfig, PORT } from './config/index.js';
 import { startScheduler, stopScheduler } from './services/scheduler.js';
 import { commitRouter } from './routes/commit.js';
 import { disputeRouter } from './routes/dispute.js';
@@ -12,7 +12,6 @@ import { webhookRouter } from './routes/webhook.js';
 // Server Configuration
 // ============================================================================
 
-const PORT = parseInt(process.env['PORT'] ?? '3000', 10);
 const app = express();
 
 // Middleware
@@ -37,7 +36,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
-    environment: process.env['MNEE_ENV'] ?? 'sandbox',
+    version: 'v1.0-erc20',
   });
 });
 
@@ -68,37 +67,37 @@ app.use((err: Error, req: express.Request, res: express.Response, _next: express
 // ============================================================================
 
 async function main(): Promise<void> {
-  console.log('Starting Commit Protocol Server...\n');
+  console.log('Starting Commit Protocol Orchestrator...\n');
 
-  // Validate MNEE configuration
-  validateMneeConfig();
+  // Validate configuration
+  validateConfig();
 
-  // Initialize database (also creates data directory)
-  initializeDatabase();
+  // Initialize database (Prisma + PostgreSQL)
+  await initializeDatabase();
 
-  // Start scheduler
+  // Start scheduler (for automatic settlement)
   startScheduler();
 
   // Start server
   const server = app.listen(PORT, () => {
-    console.log(`\nServer running on http://localhost:${PORT}`);
-    console.log(`Environment: ${process.env['MNEE_ENV'] ?? 'sandbox'}`);
+    console.log(`\nOrchestrator running on http://localhost:${PORT}`);
     console.log('\nAvailable endpoints:');
     console.log('POST /commit/create     - Create new commitment');
-    console.log('POST /commit/deliver    - Mark as delivered');
+    console.log('POST /commit/deliver    - Submit work for a commitment');
     console.log('GET  /commit/:id        - Get commitment details');
     console.log('GET  /commit/list/:addr - List commitments by address');
     console.log('POST /dispute/open      - Open dispute');
     console.log('POST /dispute/resolve   - Resolve dispute');
     console.log('GET  /dispute/:commitId - Get dispute details');
-    console.log('POST /webhook/mnee      - MNEE webhook handler');
+    console.log('POST /webhook/contract  - Contract event webhook');
     console.log('GET  /health            - Health check\n');
   });
 
   // Graceful shutdown
-  const shutdown = () => {
+  const shutdown = async () => {
     console.log('\nShutting down...');
     stopScheduler();
+    await disconnectDatabase();
     server.close(() => {
       console.log('Server closed');
       process.exit(0);

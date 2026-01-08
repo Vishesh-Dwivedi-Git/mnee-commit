@@ -4,6 +4,9 @@ server/data
 server/out
 server/.env
 
+contracts/lib
+contracts/out
+
 bot/node_modules/
 bot/.env
 # Build output

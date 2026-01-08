@@ -1,50 +1,78 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
-import type { MneeWebhookPayload } from '../types/commit.js';
+import type { ApiResponse, ContractEventPayload } from '../types/commit.js';
 
 export const webhookRouter = Router();
 
 /**
- * POST /webhook/mnee
- * Handle MNEE transaction status webhooks
+ * POST /webhook/contract
+ * Handle contract events from indexer/listener
+ * 
+ * Events:
+ * - CommitCreated: Sync off-chain record with on-chain commit ID
+ * - WorkSubmitted: Trigger AI verification agents
+ * - DisputeOpened: Update dispute state
+ * - CommitSettled: Mark as settled
  */
-webhookRouter.post('/mnee', (req: Request, res: Response) => {
+webhookRouter.post('/contract', async (req: Request, res: Response) => {
   try {
-    const payload = req.body as MneeWebhookPayload;
+    const event = req.body as ContractEventPayload;
 
-    // Log the webhook for audit trail
-    console.log('MNEE Webhook received:', {
-      id: payload.id,
-      tx_id: payload.tx_id,
-      status: payload.status,
-      action: payload.action_requested,
-      timestamp: new Date().toISOString(),
-    });
-
-    // Handle different statuses
-    switch (payload.status) {
-      case 'BROADCASTING':
-        console.log(`Transaction ${payload.tx_id} is broadcasting...`);
-        break;
-      case 'SUCCESS':
-        console.log(`Transaction ${payload.tx_id} broadcast successful`);
-        break;
-      case 'MINED':
-        console.log(`Transaction ${payload.tx_id} confirmed in block`);
-        break;
-      case 'FAILED':
-        console.error(`Transaction ${payload.tx_id} failed:`, payload.errors);
-        break;
+    if (!event.eventName || !event.commitId) {
+      res.status(400).json({
+        success: false,
+        error: 'eventName and commitId are required',
+      } satisfies ApiResponse<never>);
+      return;
     }
 
-    // TODO: Optionally update UI/notifications based on status
-    // TODO: Store webhook events for audit log
+    console.log(`[Webhook] Received ${event.eventName} for commit ${event.commitId}`);
 
-    // Always respond with 200 to acknowledge receipt
-    res.sendStatus(200);
+    switch (event.eventName) {
+      case 'CommitCreated':
+        // TODO: Sync off-chain record with on-chain commit ID
+        console.log(`[Webhook] CommitCreated: ${JSON.stringify(event.data)}`);
+        break;
+
+      case 'WorkSubmitted':
+        // TODO: Trigger AI verification agents
+        console.log(`[Webhook] WorkSubmitted: triggering agents`);
+        break;
+
+      case 'DisputeOpened':
+        // TODO: Update dispute state to OPEN
+        console.log(`[Webhook] DisputeOpened: updating state`);
+        break;
+
+      case 'CommitSettled':
+        // TODO: Mark as settled
+        console.log(`[Webhook] CommitSettled: marking complete`);
+        break;
+
+      default:
+        console.log(`[Webhook] Unknown event: ${event.eventName}`);
+    }
+
+    res.status(200).json({
+      success: true,
+      data: { received: event.eventName },
+    } satisfies ApiResponse<{ received: string }>);
   } catch (error) {
-    console.error('Error processing MNEE webhook:', error);
-    // Still respond with 200 to prevent retries
-    res.sendStatus(200);
+    console.error('Error processing webhook:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to process webhook',
+    } satisfies ApiResponse<never>);
   }
+});
+
+/**
+ * GET /webhook/health
+ * Webhook endpoint health check
+ */
+webhookRouter.get('/health', (req: Request, res: Response) => {
+  res.json({
+    success: true,
+    data: { status: 'ok', endpoint: 'contract-webhook' },
+  } satisfies ApiResponse<{ status: string; endpoint: string }>);
 });

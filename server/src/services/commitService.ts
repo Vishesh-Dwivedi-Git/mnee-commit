@@ -7,9 +7,8 @@ import {
   getDisputeByCommitmentId,
   updateDisputeState,
 } from '../db/index.js';
-import { transferToEscrow, releaseToContributor, refundToClient } from './mneeService.js';
 import { hashMetadata, generateCommitmentId, generateDisputeId } from '../utils/hash.js';
-import { DISPUTE_STAKE_PERCENT } from '../config/mnee.js';
+import { DISPUTE_STAKE_BASE, REPUTATION_SCALING_CONSTANT } from '../config/index.js';
 import type {
   Commitment,
   Dispute,
@@ -24,15 +23,15 @@ import type {
 } from '../types/commit.js';
 
 // ============================================================================
-// Commitment Operations
+// Commitment Operations (Orchestrator-side)
 // ============================================================================
 
 /**
- * Create a new commitment
+ * Create a new commitment record
  * 
- * 1. Hash metadata for integrity
- * 2. Transfer MNEE from client to escrow
- * 3. Persist commitment record
+ * NOTE: This creates the off-chain record. The on-chain commitment
+ * is created by the user calling createCommit() on the smart contract.
+ * The orchestrator listens for CommitCreated events to sync state.
  */
 export async function createCommitment(
   input: CreateCommitmentRequest
@@ -41,81 +40,87 @@ export async function createCommitment(
   const metadataHash = input.metadata ? hashMetadata(input.metadata) : null;
   const now = Date.now();
 
-  // Transfer MNEE to escrow
-  const { ticketId } = await transferToEscrow(input.amount, input.clientWif);
-
   // Create commitment record
   const commitment: Commitment = {
     id: commitId,
-    clientAddress: input.clientAddress,
+    clientAddress: input.clientAddress,       // Creator (on-chain)
     contributorAddress: input.contributorAddress,
     amount: input.amount,
+    tokenAddress: input.tokenAddress ?? '',   // ERC-20 token address
     deliveryDeadline: input.deliveryDeadline,
     releaseAfter: input.deliveryDeadline + input.disputeWindowSeconds * 1000,
     state: 'CREATED',
     metadataHash,
+    specCid: input.specCid ?? null,           // IPFS CID for spec
     deliverableHash: null,
-    transferTicketId: ticketId,
+    evidenceCid: null,                        // IPFS CID for evidence
+    onChainCommitId: null,                    // Set when synced with contract
     createdAt: now,
     deliveredAt: null,
   };
 
-  insertCommitment(commitment);
+  await insertCommitment(commitment);
 
   console.log(`Commitment created: ${commitId}`);
 
   return {
     commitId,
-    transferTicketId: ticketId,
     metadataHash,
+    amount: input.amount,
+    tokenAddress: commitment.tokenAddress,
+    message: 'Commitment created. User must call createCommit() on smart contract to fund escrow.',
   };
 }
 
 /**
- * Mark commitment as delivered
+ * Submit work for a commitment (mark as delivered)
+ * 
+ * The contributor calls submitWork() on the smart contract.
+ * The orchestrator receives the event and triggers AI verification.
  */
 export async function markDelivered(
   input: DeliverRequest
 ): Promise<DeliverResponse> {
-  const commitment = getCommitmentById(input.commitId);
+  const commitment = await getCommitmentById(input.commitId);
 
   if (!commitment) {
     throw new Error(`Commitment not found: ${input.commitId}`);
   }
 
-  if (commitment.state !== 'CREATED') {
+  if (commitment.state !== 'CREATED' && commitment.state !== 'FUNDED') {
     throw new Error(`Cannot deliver commitment in state: ${commitment.state}`);
   }
 
   const now = Date.now();
 
-  updateCommitmentState(
+  await updateCommitmentState(
     input.commitId,
-    'DELIVERED',
+    'SUBMITTED',
     now,
     input.deliverableHash
   );
 
-  console.log(`Commitment delivered: ${input.commitId}`);
+  console.log(`Work submitted: ${input.commitId}`);
 
   return {
     success: true,
     deliveredAt: now,
+    message: 'Work submitted. AI verification will be triggered.',
   };
 }
 
 /**
  * Get commitment by ID
  */
-export function getCommitment(id: string): Commitment | undefined {
-  return getCommitmentById(id);
+export async function getCommitment(id: string): Promise<Commitment | undefined> {
+  return await getCommitmentById(id);
 }
 
 /**
  * List commitments by client or contributor address
  */
-export function listCommitments(address: string): Commitment[] {
-  return getCommitmentsByAddress(address);
+export async function listCommitments(address: string): Promise<Commitment[]> {
+  return await getCommitmentsByAddress(address);
 }
 
 // ============================================================================
@@ -123,28 +128,54 @@ export function listCommitments(address: string): Commitment[] {
 // ============================================================================
 
 /**
+ * Calculate required dispute stake using dynamic formula
+ * 
+ * Sreq = Sbase × Mtime × Mrep × MAI
+ */
+export function calculateDisputeStake(
+  commitment: Commitment,
+  timeRemaining: number,  // in days
+  reputation: { totalValue: number },
+  aiConfidence: number
+): bigint {
+  // Time multiplier: Mtime = 1 + 0.5 × e^(-λt)
+  const lambda = 0.5;
+  const Mtime = 1 + 0.5 * Math.exp(-lambda * timeRemaining);
+
+  // Reputation multiplier: Mrep = 1 + log(Vtotal + 1) / K
+  const Mrep = 1 + Math.log(reputation.totalValue + 1) / REPUTATION_SCALING_CONSTANT;
+
+  // AI confidence multiplier
+  let MAI = 1.0;
+  if (aiConfidence >= 0.95) MAI = 2.0;
+  else if (aiConfidence >= 0.80) MAI = 1.5;
+
+  const multiplier = Mtime * Mrep * MAI;
+  const stake = BigInt(Math.floor(Number(DISPUTE_STAKE_BASE) * multiplier));
+
+  return stake;
+}
+
+/**
  * Open a dispute for a commitment
  * 
- * Rules:
- * - Only the client can dispute
- * - Must be before release_after
- * - Must stake a percentage of the commitment amount
+ * User must call openDispute() on the smart contract with required stake.
  */
 export async function openDispute(
   input: OpenDisputeRequest
 ): Promise<OpenDisputeResponse> {
-  const commitment = getCommitmentById(input.commitId);
+  const commitment = await getCommitmentById(input.commitId);
 
   if (!commitment) {
     throw new Error(`Commitment not found: ${input.commitId}`);
   }
 
-  if (commitment.state !== 'DELIVERED') {
+  if (commitment.state !== 'SUBMITTED') {
     throw new Error(`Cannot dispute commitment in state: ${commitment.state}`);
   }
 
   if (commitment.clientAddress !== input.clientAddress) {
-    throw new Error('Only the client can open a dispute');
+    throw new Error('Only the creator can open a dispute');
   }
 
   const now = Date.now();
@@ -153,55 +184,53 @@ export async function openDispute(
   }
 
   // Check if dispute already exists
-  const existingDispute = getDisputeByCommitmentId(input.commitId);
+  const existingDispute = await getDisputeByCommitmentId(input.commitId);
   if (existingDispute) {
     throw new Error('Dispute already exists for this commitment');
   }
 
-  // Calculate stake amount
-  const stakeAmount = (commitment.amount * DISPUTE_STAKE_PERCENT) / 100;
-
-  // Transfer stake to escrow
-  const { ticketId } = await transferToEscrow(stakeAmount, input.clientWif);
+  // Calculate stake (simplified - full formula uses reputation + AI confidence)
+  const timeRemainingDays = (commitment.releaseAfter - now) / (24 * 60 * 60 * 1000);
+  const stakeAmount = calculateDisputeStake(
+    commitment,
+    timeRemainingDays,
+    { totalValue: 0 },  // TODO: Get from reputation oracle
+    0.5                  // TODO: Get from AI agent
+  );
 
   // Create dispute record
   const disputeId = generateDisputeId();
   const dispute: Dispute = {
     id: disputeId,
     commitmentId: input.commitId,
-    stakeAmount,
-    stakeTicketId: ticketId,
-    state: 'OPEN',
+    stakeAmount: stakeAmount.toString(),
+    onChainStakeTicketId: null,
+    state: 'PENDING',  // Pending until on-chain stake is confirmed
     reason: input.reason ?? null,
     createdAt: now,
     resolvedAt: null,
   };
 
-  insertDispute(dispute);
-
-  // Update commitment state
-  updateCommitmentState(input.commitId, 'DISPUTED');
+  await insertDispute(dispute);
 
   console.log(`Dispute opened: ${disputeId} for commitment ${input.commitId}`);
 
   return {
     disputeId,
-    stakeAmount,
-    stakeTicketId: ticketId,
+    stakeAmount: stakeAmount.toString(),
+    message: `Dispute created. User must call openDispute() on smart contract with ${stakeAmount} wei stake.`,
   };
 }
 
 /**
  * Resolve a dispute
  * 
- * Resolution outcomes:
- * - CLIENT: Refund commitment amount + stake to client
- * - CONTRIBUTOR: Release to contributor, stake goes to protocol
+ * Only callable by arbitrator (admin or Kleros court in future)
  */
 export async function resolveDispute(
   input: ResolveDisputeRequest
 ): Promise<ResolveDisputeResponse> {
-  const commitment = getCommitmentById(input.commitId);
+  const commitment = await getCommitmentById(input.commitId);
   if (!commitment) {
     throw new Error(`Commitment not found: ${input.commitId}`);
   }
@@ -210,7 +239,7 @@ export async function resolveDispute(
     throw new Error(`Commitment is not in disputed state: ${commitment.state}`);
   }
 
-  const dispute = getDisputeByCommitmentId(input.commitId);
+  const dispute = await getDisputeByCommitmentId(input.commitId);
   if (!dispute) {
     throw new Error(`No dispute found for commitment: ${input.commitId}`);
   }
@@ -220,41 +249,35 @@ export async function resolveDispute(
   }
 
   const now = Date.now();
-  let ticketId: string | null = null;
   let finalState: Commitment['state'];
   let disputeState: Dispute['state'];
 
   if (input.resolution === 'CLIENT') {
-    // Refund commitment + stake to client
-    const totalRefund = commitment.amount + dispute.stakeAmount;
-    const result = await refundToClient(totalRefund, commitment.clientAddress);
-    ticketId = result.ticketId;
+    // Creator wins - refund commitment + stake
     finalState = 'REFUNDED';
     disputeState = 'RESOLVED_CLIENT';
   } else {
-    // Release to contributor (stake stays in escrow as protocol fee)
-    const result = await releaseToContributor(commitment.amount, commitment.contributorAddress);
-    ticketId = result.ticketId;
-    finalState = 'RELEASED';
+    // Contributor wins - release payment, stake distributed per protocol
+    finalState = 'SETTLED';
     disputeState = 'RESOLVED_CONTRIBUTOR';
   }
 
   // Update records
-  updateCommitmentState(input.commitId, finalState);
-  updateDisputeState(dispute.id, disputeState, now);
+  await updateCommitmentState(input.commitId, finalState);
+  await updateDisputeState(dispute.id, disputeState, now);
 
   console.log(`Dispute resolved: ${dispute.id} → ${disputeState}`);
 
   return {
     success: true,
     finalState,
-    transferTicketId: ticketId,
+    message: `Dispute resolved in favor of ${input.resolution}. On-chain settlement will be triggered.`,
   };
 }
 
 /**
  * Get dispute by commitment ID
  */
-export function getDispute(commitmentId: string): Dispute | undefined {
-  return getDisputeByCommitmentId(commitmentId);
+export async function getDispute(commitmentId: string): Promise<Dispute | undefined> {
+  return await getDisputeByCommitmentId(commitmentId);
 }

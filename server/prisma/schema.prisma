@@ -1,0 +1,128 @@
+// Commit Protocol - Prisma Schema
+// PostgreSQL + Supabase
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// Core Models
+// ============================================================================
+
+model Commitment {
+  id                   String    @id @default(uuid())
+  clientAddress        String    @map("client_address")
+  contributorAddress   String    @map("contributor_address")
+  amount               Decimal   @db.Decimal(78, 0) // Support large numbers (wei)
+  tokenAddress         String    @default("") @map("token_address")
+  deliveryDeadline     BigInt    @map("delivery_deadline")
+  releaseAfter         BigInt    @map("release_after")
+  state                CommitmentState
+  metadataHash         String?   @map("metadata_hash")
+  specCid              String?   @map("spec_cid")
+  deliverableHash      String?   @map("deliverable_hash")
+  evidenceCid          String?   @map("evidence_cid")
+  onChainCommitId      String?   @map("on_chain_commit_id")
+  createdAt            BigInt    @map("created_at")
+  deliveredAt          BigInt?   @map("delivered_at")
+
+  // Relations
+  dispute              Dispute?
+  agentEvidence        AgentEvidence[]
+  contractEvents       ContractEvent[]
+
+  @@index([clientAddress])
+  @@index([contributorAddress])
+  @@index([state])
+  @@index([onChainCommitId])
+  @@map("commitments")
+}
+
+model Dispute {
+  id                      String        @id @default(uuid())
+  commitmentId            String        @unique @map("commitment_id")
+  stakeAmount             String        @map("stake_amount") // BigInt as string
+  onChainStakeTicketId    String?       @map("on_chain_stake_ticket_id")
+  state                   DisputeState
+  reason                  String?       @db.Text
+  createdAt               BigInt        @map("created_at")
+  resolvedAt              BigInt?       @map("resolved_at")
+
+  // Relations
+  commitment              Commitment    @relation(fields: [commitmentId], references: [id], onDelete: Cascade)
+
+  @@index([commitmentId])
+  @@map("disputes")
+}
+
+model Reputation {
+  address              String   @id
+  totalValue           Decimal  @default(0) @map("total_value") @db.Decimal(20, 2)
+  numCommits           Int      @default(0) @map("num_commits")
+  settlementRate       Decimal  @default(1.0) @map("settlement_rate") @db.Decimal(5, 4)
+  disputesLost         Int      @default(0) @map("disputes_lost")
+  updatedAt            BigInt   @map("updated_at")
+
+  @@index([address])
+  @@map("reputation")
+}
+
+model AgentEvidence {
+  id                   String   @id @default(uuid())
+  commitmentId         String   @map("commitment_id")
+  agentId              String   @map("agent_id")
+  confidenceScore      Decimal  @map("confidence_score") @db.Decimal(3, 2)
+  passFail             Boolean  @map("pass_fail")
+  evidenceCid          String   @map("evidence_cid")
+  signature            String
+  createdAt            BigInt   @map("created_at")
+
+  // Relations
+  commitment           Commitment @relation(fields: [commitmentId], references: [id], onDelete: Cascade)
+
+  @@index([commitmentId])
+  @@map("agent_evidence")
+}
+
+model ContractEvent {
+  id                   String   @id @default(uuid())
+  eventName            String   @map("event_name")
+  commitId             String   @map("commit_id")
+  blockNumber          BigInt   @map("block_number")
+  transactionHash      String   @map("transaction_hash")
+  data                 Json
+  processed            Boolean  @default(false)
+  createdAt            BigInt   @map("created_at")
+
+  // Relations
+  commitment           Commitment @relation(fields: [commitId], references: [id], onDelete: Cascade)
+
+  @@index([blockNumber])
+  @@index([processed])
+  @@map("contract_events")
+}
+
+// ============================================================================
+// Enums
+// ============================================================================
+
+enum CommitmentState {
+  CREATED
+  FUNDED
+  SUBMITTED
+  DISPUTED
+  SETTLED
+  REFUNDED
+}
+
+enum DisputeState {
+  PENDING
+  OPEN
+  RESOLVED_CLIENT
+  RESOLVED_CONTRIBUTOR
+}

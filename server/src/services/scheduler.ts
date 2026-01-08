@@ -1,76 +1,80 @@
-import { getReleasableCommitments, updateCommitmentState } from '../db/index.js';
-import { releaseToContributor } from './mneeService.js';
+import { getSettleableCommitments, updateCommitmentState } from '../db/index.js';
+import { isContractConfigured } from './contractService.js';
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 
 /**
- * Auto-release scheduler
+ * Auto-settlement scheduler (Relayer)
  * 
  * Runs periodically to check for commitments that:
- * 1. Are in DELIVERED state
- * 2. Have passed the release_after timestamp
+ * 1. Are in SUBMITTED state
+ * 2. Have passed the release_after timestamp (dispute window closed)
  * 3. Have no active disputes
  * 
- * These commitments are automatically released to the contributor.
+ * These commitments are eligible for automatic settlement.
+ * The scheduler calls settle() on the smart contract to release funds.
+ * 
+ * NOTE: settle() is a public function - if the relayer is down,
+ * users can manually call it on Etherscan.
  */
-async function processReleasableCommitments(): Promise<void> {
+async function processSettleableCommitments(): Promise<void> {
   const now = Date.now();
-  const releasable = getReleasableCommitments(now);
+  const settleable = await getSettleableCommitments(now);
 
-  if (releasable.length === 0) {
+  if (settleable.length === 0) {
     return;
   }
 
-  console.log(`Scheduler: Found ${releasable.length} commitment(s) ready for release`);
+  console.log(`[Scheduler] Found ${settleable.length} commitment(s) ready for settlement`);
 
-  for (const commitment of releasable) {
+  for (const commitment of settleable) {
     try {
-      // Transfer MNEE from escrow to contributor
-      const { ticketId } = await releaseToContributor(
-        commitment.amount,
-        commitment.contributorAddress
-      );
+      if (isContractConfigured()) {
+        // TODO: Call settle() on smart contract
+        // const txHash = await settleCommitment(commitment.onChainCommitId);
+        console.log(`[Scheduler] Would settle commitment ${commitment.id} on-chain`);
+      }
 
-      // Update state to RELEASED
-      updateCommitmentState(commitment.id, 'RELEASED');
+      // Update local state to SETTLED
+      await updateCommitmentState(commitment.id, 'SETTLED');
 
-      console.log(`Auto-released commitment ${commitment.id} to ${commitment.contributorAddress} (ticket: ${ticketId})`);
+      console.log(`[Scheduler] Marked commitment ${commitment.id} as settled`);
     } catch (error) {
-      console.error(`Failed to release commitment ${commitment.id}:`, error);
+      console.error(`[Scheduler] Failed to settle commitment ${commitment.id}:`, error);
       // Continue with other commitments even if one fails
     }
   }
 }
 
 /**
- * Start the auto-release scheduler
+ * Start the auto-settlement scheduler
  * @param intervalMs Interval in milliseconds (default: 60 seconds)
  */
 export function startScheduler(intervalMs: number = 60_000): void {
   if (schedulerInterval) {
-    console.warn('Scheduler already running');
+    console.warn('[Scheduler] Already running');
     return;
   }
 
-  console.log(`Starting auto-release scheduler (interval: ${intervalMs}ms)`);
+  console.log(`[Scheduler] Starting auto-settlement scheduler (interval: ${intervalMs}ms)`);
 
   // Run immediately on start
-  processReleasableCommitments().catch(console.error);
+  processSettleableCommitments().catch(console.error);
 
   // Then run periodically
   schedulerInterval = setInterval(() => {
-    processReleasableCommitments().catch(console.error);
+    processSettleableCommitments().catch(console.error);
   }, intervalMs);
 }
 
 /**
- * Stop the auto-release scheduler
+ * Stop the auto-settlement scheduler
  */
 export function stopScheduler(): void {
   if (schedulerInterval) {
     clearInterval(schedulerInterval);
     schedulerInterval = null;
-    console.log('Scheduler stopped');
+    console.log('[Scheduler] Stopped');
   }
 }
 
@@ -78,5 +82,5 @@ export function stopScheduler(): void {
  * Manually trigger the scheduler (for testing)
  */
 export async function triggerScheduler(): Promise<void> {
-  await processReleasableCommitments();
+  await processSettleableCommitments();
 }

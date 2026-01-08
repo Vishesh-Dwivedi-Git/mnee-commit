@@ -13,12 +13,14 @@ import type {
   ResolveDisputeResponse,
   Dispute,
 } from '../types/commit.js';
+import { ADMIN_SECRET } from '../config/index.js';
 
 export const disputeRouter = Router();
 
 /**
  * POST /dispute/open
  * Open a dispute for a commitment
+ * Returns required stake amount - user must call openDispute() on contract
  */
 disputeRouter.post('/open', async (req: Request, res: Response) => {
   try {
@@ -32,10 +34,10 @@ disputeRouter.post('/open', async (req: Request, res: Response) => {
       return;
     }
 
-    if (!input.clientWif || !input.clientAddress) {
+    if (!input.clientAddress) {
       res.status(400).json({
         success: false,
-        error: 'clientWif and clientAddress are required',
+        error: 'clientAddress is required',
       } satisfies ApiResponse<never>);
       return;
     }
@@ -50,7 +52,7 @@ disputeRouter.post('/open', async (req: Request, res: Response) => {
     console.error('Error opening dispute:', error);
     const message = error instanceof Error ? error.message : 'Failed to open dispute';
     const statusCode = message.includes('not found') ? 404 :
-                       message.includes('Only the client') ? 403 :
+                       message.includes('Only the creator') ? 403 :
                        message.includes('window has closed') ? 400 : 500;
     res.status(statusCode).json({
       success: false,
@@ -61,7 +63,7 @@ disputeRouter.post('/open', async (req: Request, res: Response) => {
 
 /**
  * POST /dispute/resolve
- * Resolve a dispute (admin endpoint)
+ * Resolve a dispute (admin/arbitrator endpoint)
  */
 disputeRouter.post('/resolve', async (req: Request, res: Response) => {
   try {
@@ -83,7 +85,14 @@ disputeRouter.post('/resolve', async (req: Request, res: Response) => {
       return;
     }
 
-    // TODO: Add admin authentication check using input.adminSecret
+    // Admin authentication
+    if (!input.adminSecret || input.adminSecret !== ADMIN_SECRET) {
+      res.status(401).json({
+        success: false,
+        error: 'Invalid admin credentials',
+      } satisfies ApiResponse<never>);
+      return;
+    }
 
     const result = await resolveDispute(input);
 
@@ -106,7 +115,7 @@ disputeRouter.post('/resolve', async (req: Request, res: Response) => {
  * GET /dispute/:commitId
  * Get dispute details for a commitment
  */
-disputeRouter.get('/:commitId', (req: Request, res: Response) => {
+disputeRouter.get('/:commitId', async (req: Request, res: Response) => {
   try {
     const { commitId } = req.params;
 
@@ -118,7 +127,7 @@ disputeRouter.get('/:commitId', (req: Request, res: Response) => {
       return;
     }
 
-    const dispute = getDispute(commitId);
+    const dispute = await getDispute(commitId);
 
     if (!dispute) {
       res.status(404).json({
