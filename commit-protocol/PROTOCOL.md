@@ -22,10 +22,18 @@
 ### What is Commit Protocol?
 
 Commit Protocol is a **trustless escrow system** for work commitments that combines:
-- **Smart contract escrow** (ERC-20 tokens on EVM chains)
+- **Smart contract escrow** (MNEE ERC-20 tokens on Ethereum)
 - **AI-powered verification** (automated code review, testing, spec compliance)
 - **Optimistic settlement** (automatic release unless disputed)
 - **Dynamic economic security** (stake based on reputation + AI confidence)
+
+### Token
+
+- **Token**: MNEE (ERC-20)
+- **Address**: `0x8ccedbAe4916b79da7F3F612EfB2EB93A2bFD6cF`
+- **Network**: Ethereum Mainnet
+- **Decimals**: 18
+- **Testing**: Fork mainnet using Anvil (no testnet available)
 
 ### Problem Statement
 
@@ -42,6 +50,7 @@ Commit Protocol provides:
 - ✅ **AI verification** defines objective "done" criteria
 - ✅ **Dynamic stakes** scale with task value, reputation, and AI confidence
 - ✅ **Reputation vectors** reward consistent contributors
+- ✅ **MNEE token payments** for all transactions
 
 ---
 
@@ -548,7 +557,7 @@ contract.settle(1)
 - Creator: Carol (startup founder)
 - Contributor: Dave (new freelancer)
 - Task: Design landing page
-- Payment: 2,000 USDC
+- Payment: 2,000 MNEE
 - Deadline: 5 days
 - Dispute window: 2 days
 
@@ -557,7 +566,7 @@ contract.settle(1)
 #### Day 0-4: Commitment & Submission
 ```bash
 # Similar to Example 1
-# Carol creates commitment for 2000 USDC
+# Carol creates commitment for 2000 MNEE
 # Dave submits design on Day 4
 ```
 
@@ -578,15 +587,15 @@ contract.settle(1)
 #### Day 6: Carol Opens Dispute
 ```bash
 # Calculate required stake
-Sbase = 1000 USDC
+Sbase = 1000 MNEE
 Mtime = 1 + 0.5 × e^(-0.5 × 1) = 1.303  # 1 day remaining
 Mrep = 1.0  # Dave is new (no reputation)
 MAI = 1.0   # Low AI confidence (0.72 < 0.80)
 
-Sreq = 1000 × 1.303 × 1.0 × 1.0 = 1,303 USDC
+Sreq = 1000 × 1.303 × 1.0 × 1.0 = 1,303 MNEE
 
-# Carol calls contract
-contract.openDispute(1, { value: 1303000000 })  # Stakes 1303 USDC
+# Carol stakes 1.303 ETH (separate from MNEE payment)
+contract.openDispute{value: 1.303 ether}(1)
 
 # Emits: DisputeOpened(commitId=1, disputer=0xCarol, stakeAmount=1303000000)
 
@@ -604,8 +613,8 @@ contract.openDispute(1, { value: 1303000000 })  # Stakes 1303 USDC
 contract.resolveDispute(1, false)  # false = favor creator
 
 # Contract:
-# - Refunds 2000 USDC to Carol
-# - Refunds 1303 USDC stake to Carol
+# - Refunds 2000 MNEE to Carol
+# - Refunds 1.303 ETH stake to Carol
 # - State = REFUNDED
 
 # Emits: DisputeResolved(commitId=1, favorContributor=false)
@@ -627,7 +636,7 @@ contract.resolveDispute(1, false)  # false = favor creator
 - Creator: Eve (malicious actor)
 - Contributor: Frank (experienced dev)
 - Task: API integration
-- Payment: 3,000 USDC
+- Payment: 3,000 MNEE
 - Deadline: 10 days
 
 **Timeline**:
@@ -658,15 +667,15 @@ contract.resolveDispute(1, false)  # false = favor creator
 #### Day 11: Eve Tries to Dispute (Bad Faith)
 ```bash
 # Calculate required stake
-Sbase = 1000 USDC
+Sbase = 1000 MNEE (in ETH equivalent)
 Mtime = 1 + 0.5 × e^(-0.5 × 1) = 1.303  # 1 day remaining
 Mrep = 1 + log(120001) / 10000 = 1.0012  # High reputation
 MAI = 2.0  # Very high AI confidence (0.98 ≥ 0.95)
 
-Sreq = 1000 × 1.303 × 1.0012 × 2.0 = 2,609 USDC
+Sreq = 1000 × 1.303 × 1.0012 × 2.0 = 2,609 MNEE worth in ETH
 
-# Eve must stake 2,609 USDC to dispute
-# This is 87% of the payment amount!
+# Eve must stake 2.609 ETH to dispute
+# This is significant economic deterrent!
 # Eve realizes disputing will likely lose her money
 # Decides not to dispute
 ```
@@ -675,7 +684,7 @@ Sreq = 1000 × 1.303 × 1.0012 × 2.0 = 2,609 USDC
 ```bash
 # No dispute opened
 # Orchestrator calls settle()
-# Frank receives 3,000 USDC
+# Frank receives 3,000 MNEE
 # Frank's reputation increases
 ```
 
@@ -1042,21 +1051,37 @@ Content-Type: application/json
 
 ### Prerequisites
 
-1. **Smart Contract Deployment**
+1. **Smart Contract Deployment (Ethereum Mainnet)**
+   
+   Since MNEE has no testnet, we use Anvil to fork mainnet for testing:
+   
    ```bash
-   # Deploy to Base Sepolia
-   forge create Commit \
-     --rpc-url https://sepolia.base.org \
-     --private-key $DEPLOYER_PRIVATE_KEY \
-     --constructor-args $ADMIN_ADDRESS
+   # Start Anvil with mainnet fork
+   cd contracts
+   export ETH_MAINNET_RPC_URL="https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY"
+   anvil --fork-url $ETH_MAINNET_RPC_URL --accounts 10 --balance 10000
+   
+   # In another terminal, deploy
+   forge script script/DeployLocal.s.sol:DeployLocal \
+     --rpc-url http://localhost:8545 \
+     --broadcast
    
    # Note the deployed contract address
    CONTRACT_ADDRESS=0x...
    ```
+   
+   For mainnet deployment (when ready):
+   ```bash
+   forge script script/Deploy.s.sol:DeployCommit \
+     --rpc-url $ETH_MAINNET_RPC_URL \
+     --private-key $DEPLOYER_PRIVATE_KEY \
+     --broadcast \
+     --verify
+   ```
 
 2. **Database Setup (Supabase)**
    ```bash
-   # Create new Supabase project
+   # Create new Supabase project at supabase.com
    # Copy connection string
    DATABASE_URL=postgresql://postgres:[password]@db.[project].supabase.co:5432/postgres
    ```
@@ -1084,10 +1109,13 @@ Content-Type: application/json
    # Edit .env
    DATABASE_URL=postgresql://...
    CONTRACT_ADDRESS=0x...
-   RPC_URL=https://sepolia.base.org
+   RPC_URL=https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY
    ORCHESTRATOR_PRIVATE_KEY=0x...
    PINATA_API_KEY=...
    PINATA_SECRET_KEY=...
+   
+   # MNEE Token (already configured)
+   # Default token address: 0x8ccedbAe4916b79da7F3F612EfB2EB93A2bFD6cF
    ```
 
 3. **Initialize Database**
@@ -1126,18 +1154,42 @@ npm start
 # Test health endpoint
 curl http://localhost:3000/health
 
-# Test commitment creation
+# Test commitment creation (with MNEE token)
 curl -X POST http://localhost:3000/commit/create \
   -H "Content-Type: application/json" \
   -d '{
     "clientAddress": "0x...",
     "contributorAddress": "0x...",
-    "amount": 1000000000,
-    "tokenAddress": "0x...",
+    "amount": "1000000000000000000000",
+    "tokenAddress": "0x8ccedbAe4916b79da7F3F612EfB2EB93A2bFD6cF",
     "deliveryDeadline": 1704672000,
     "disputeWindowSeconds": 259200,
     "specCid": "QmTest..."
   }'
+```
+
+### Testing with MNEE Tokens
+
+Since MNEE has no testnet, use Anvil fork:
+
+```bash
+# Terminal 1: Start Anvil fork
+cd contracts
+./scripts/start-anvil.sh
+
+# Terminal 2: Get MNEE tokens by impersonating a holder
+# Find a MNEE whale address on Etherscan
+cast send 0x8ccedbAe4916b79da7F3F612EfB2EB93A2bFD6cF \
+  "transfer(address,uint256)" \
+  YOUR_TEST_ADDRESS \
+  1000000000000000000000 \
+  --from WHALE_ADDRESS \
+  --unlocked \
+  --rpc-url http://localhost:8545
+
+# Terminal 3: Run fork tests
+forge test --match-contract CommitForkTest \
+  --fork-url http://localhost:8545
 ```
 
 ---

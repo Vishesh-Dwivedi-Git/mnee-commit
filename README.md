@@ -1,310 +1,311 @@
-# MNEE Commit Protocol
+# Commit Protocol
 
-Optimistic Settlement + Dispute Staking protocol built on Bitcoin SV using the MNEE SDK.
+> **Optimistic Agentic Settlement for On-Chain Work Commitments**
 
-## Overview
+A trustless escrow system for work commitments that combines smart contract escrow, AI-powered verification, and optimistic settlement with dynamic economic security.
 
-The MNEE Commit Protocol enables trustless commitments between clients and contributors with:
-- **Optimistic Settlement**: Automatic release after delivery + dispute window
-- **Dispute Staking**: Clients stake to dispute, preventing frivolous claims
-- **Server-Side Funding**: Secure bot wallet funding with explicit user confirmation
-- **Discord Integration**: Natural language interface via AI bot
+## 🎯 Overview
 
-## Features
+Commit Protocol enables DAOs and projects to:
+- ✅ **Automatic settlement** after deadline + dispute window
+- ✅ **AI verification** for objective "done" criteria
+- ✅ **Dynamic stakes** that scale with task value, reputation, and AI confidence
+- ✅ **Reputation tracking** to reward consistent contributors
 
-### Core Protocol
-- ✅ Create commitments with delivery deadlines
-- ✅ Mark deliverables as delivered with proof hash
-- ✅ Open disputes within dispute window
-- ✅ Automatic release after dispute window expires
-- ✅ Admin dispute resolution
-
-### Security & UX
-- 🔒 **Server-side funding** using BOT_WIF (no user private keys)
-- ✅ **Explicit user confirmation** before spending
-- 📊 **Audit logging** of all funding actions
-- 🛡️ **Spending limits** (per-transaction and daily caps)
-- ⏱️ **Confirmation timeouts** (10 minutes)
-- 🔑 **Admin override** for emergency funding
-
-## Architecture
+## 🏗️ Architecture
 
 ```
-┌─────────────┐      ┌──────────────┐      ┌─────────────┐
-│   Discord   │─────▶│  Bot/Server  │─────▶│   MNEE      │
-│    User     │      │ (BOT_WIF)    │      │  Blockchain │
-└─────────────┘      └──────────────┘      └─────────────┘
-      │                      │                      │
-      │  1. Create intent    │                      │
-      │  2. Confirm funding  │                      │
-      │  3. Get confirmation │                      │
-      │                      │  4. Sign & broadcast │
-      │                      │  5. Webhook confirms │
+┌─────────────────────────────────────────────────────────────┐
+│                     Commit Protocol                          │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐ │
+│  │   Smart      │    │ Orchestrator │    │  AI Agents   │ │
+│  │  Contracts   │◄───┤   Server     │◄───┤  (GitHub)    │ │
+│  │  (Solidity)  │    │ (Node.js)    │    │  (OpenAI)    │ │
+│  └──────────────┘    └──────────────┘    └──────────────┘ │
+│         │                    │                    │         │
+│         │                    │                    │         │
+│    MNEE Token          PostgreSQL             IPFS/Pinata  │
+│  (Ethereum L1)          (Supabase)                          │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### Components
+## 💰 MNEE Token
 
-- **Server** (`/server`): Express.js API with TypeScript
-  - REST API for commitments and disputes
-  - Server-side funding with BOT_WIF
-  - Webhook handler for transaction confirmations
-  - SQLite database for state management
+- **Token**: MNEE ERC-20
+- **Address**: `0x8ccedbAe4916b79da7F3F612EfB2EB93A2bFD6cF`
+- **Network**: Ethereum Mainnet
+- **Testing**: Fork mainnet using Anvil (no testnet available)
 
-- **Bot** (`/bot`): Discord bot with Gemini AI
-  - Natural language interface
-  - MCP tools for protocol actions
-  - Confirmation flow management
-  - User-friendly responses
+## 📁 Repository Structure
 
-## Quick Start
+```
+mnee-commit/
+├── contracts/          # Solidity smart contracts (Foundry)
+│   ├── src/
+│   │   └── Commit.sol          # Main escrow contract
+│   ├── test/
+│   │   ├── Commit.t.sol        # Unit tests
+│   │   └── CommitFork.t.sol    # Fork tests with MNEE
+│   └── script/
+│       ├── Deploy.s.sol        # Mainnet deployment
+│       └── DeployLocal.s.sol   # Local fork deployment
+│
+├── server/             # Orchestrator backend (Node.js + TypeScript)
+│   ├── src/
+│   │   ├── config/             # Web3/IPFS configuration
+│   │   ├── services/           # Contract, IPFS, commit services
+│   │   ├── routes/             # REST API endpoints
+│   │   └── db/                 # Prisma + PostgreSQL
+│   └── prisma/
+│       └── schema.prisma       # Database schema
+│
+├── bot/                # Discord bot for user interaction
+│   └── index.js
+│
+└── commit-protocol/    # Documentation
+    ├── PROTOCOL.md             # Complete technical guide
+    └── commit_protocol.pdf     # Original whitepaper
+```
+
+## 🚀 Quick Start
 
 ### Prerequisites
+
 - Node.js 18+
-- MNEE API key ([get one here](https://mnee.com))
-- Discord bot token
-- Gemini API key
+- PostgreSQL (or Supabase account)
+- Foundry (for smart contracts)
+- Ethereum RPC URL (Alchemy/Infura)
 
-### Setup
+### 1. Smart Contracts
 
-1. **Clone and install**
 ```bash
-git clone <repo>
-cd mnee-commit
+cd contracts
 
-# Server
-cd server
-npm install
+# Install dependencies
+forge install
+
+# Configure environment
 cp .env.example .env
-# Edit .env with your configuration
+# Add ETH_MAINNET_RPC_URL
 
-# Bot
-cd ../bot
-npm install
-cp .env.example .env
-# Edit .env with your configuration
+# Start Anvil fork
+./scripts/start-anvil.sh
+
+# Deploy to local fork
+forge script script/DeployLocal.s.sol:DeployLocal \
+  --rpc-url http://localhost:8545 \
+  --broadcast
+
+# Run tests
+forge test
 ```
 
-2. **Configure environment variables**
+### 2. Orchestrator Server
 
-**Server** (`.env`):
 ```bash
-# Server
-PORT=3000
-SERVER_BASE_URL=http://localhost:3000
-
-# MNEE SDK
-MNEE_ENV=sandbox
-MNEE_API_KEY=your_sandbox_api_key
-
-# Escrow Wallet (server-controlled)
-ESCROW_ADDRESS=your_escrow_address
-ESCROW_WIF=your_escrow_private_key
-
-# Bot Wallet (for server-side funding)
-BOT_WALLET_ADDRESS=your_bot_wallet_address
-BOT_WIF=your_bot_wallet_private_key
-
-# Funding Limits & Security
-MAX_FUNDING_AMOUNT=100000
-DAILY_FUNDING_CAP=1000000
-CONFIRMATION_TIMEOUT_MS=600000
-ADMIN_SECRET=your_admin_secret
-
-# Protocol
-DISPUTE_STAKE_PERCENT=10
-```
-
-**Bot** (`.env`):
-```bash
-BOT_TOKEN=your_discord_bot_token
-GEMINI_API_KEY=your_gemini_api_key
-SERVER_URL=http://localhost:3000
-```
-
-3. **Run**
-```bash
-# Terminal 1: Server
 cd server
-npm run build
-npm start
 
-# Terminal 2: Bot
+# Install dependencies
+npm install
+
+# Configure environment
+cp .env.example .env
+# Add DATABASE_URL, CONTRACT_ADDRESS, RPC_URL, etc.
+
+# Initialize database
+npm run db:push
+
+# Start server
+npm run dev
+```
+
+### 3. Discord Bot
+
+```bash
 cd bot
-node index.js
+
+# Install dependencies
+npm install
+
+# Configure environment
+cp .env.example .env
+# Add BOT_TOKEN, SERVER_URL, GEMINI_API_KEY
+
+# Start bot
+npm start
 ```
 
-## Usage
+## 🔄 Workflow
 
-### Creating a Commitment (Two-Step Process)
+### 1. Create Commitment
 
-**Step 1: Create Intent**
-```
-User: @Bot create a commitment for 5000 sats to 1ABC... due tomorrow
+```typescript
+// Client creates commitment via API
+POST /commit/create
+{
+  "clientAddress": "0x...",
+  "contributorAddress": "0x...",
+  "amount": "1000000000000000000000",  // 1000 MNEE
+  "tokenAddress": "0x8ccedbAe4916b79da7F3F612EfB2EB93A2bFD6cF",
+  "deliveryDeadline": 1704672000,
+  "disputeWindowSeconds": 259200,
+  "specCid": "QmSpec..."
+}
 
-Bot: ✅ Commitment created!
-ID: abc-123
-Amount: 5000 satoshis
-
-⚠️ CONFIRMATION REQUIRED
-I will fund this commitment using the bot wallet.
-Amount: 5000 satoshis
-Action: Transfer from bot wallet to escrow
-
-Reply **YES** to confirm or **NO** to cancel.
-(This confirmation expires in 10 minutes)
-```
-
-**Step 2: Confirm and Fund**
-```
-User: YES
-
-Bot: ✅ Funding successful!
-Commitment ID: abc-123
-Amount: 5000 satoshis
-Transaction ID: tx-456
-
-The commitment is now active and funded.
+// Client funds on-chain
+contract.createCommitment(...)
 ```
 
-### Marking as Delivered
-```
-User: @Bot I delivered the work for abc-123, proof hash: deadbeef
+### 2. Submit Work
 
-Bot: ✅ Commitment marked as delivered!
-ID: abc-123
-Deliverable Hash: deadbeef
-Dispute window ends: 2026-01-07 12:00 UTC
+```typescript
+// Contributor submits work
+contract.submitWork(commitId, "QmEvidence...")
 
-The contributor can claim funds after the dispute window.
-```
-
-### Opening a Dispute
-```
-User: @Bot I want to dispute abc-123 because the work is incomplete
-
-Bot: ⚠️ Dispute created!
-ID: dispute-789
-Stake required: 500 satoshis (10% of commitment)
-
-⚠️ CONFIRMATION REQUIRED
-I will fund this dispute stake using the bot wallet.
-Amount: 500 satoshis
-Action: Transfer from bot wallet to escrow
-
-Reply **YES** to confirm or **NO** to cancel.
-
-User: YES
-
-Bot: ✅ Dispute funded and activated!
-Dispute ID: dispute-789
-Stake: 500 satoshis
-Transaction ID: tx-999
-
-The dispute is now open for admin review.
+// Orchestrator triggers AI agents
+// → GitHub Auditor analyzes code
+// → Evidence stored on IPFS
+// → Confidence score calculated
 ```
 
-## API Endpoints
+### 3. Settlement
 
-### Commitments
-- `POST /commit/create` - Create a new commitment (returns funding instructions)
-- `POST /commit/fund` - Fund a commitment using bot wallet (requires confirmation)
-- `POST /commit/deliver` - Mark commitment as delivered
-- `GET /commit/:id` - Get commitment details
-- `GET /commit/list/:address` - List commitments for an address
+```typescript
+// After deadline + dispute window (automatic)
+contract.settle(commitId)
+// → MNEE tokens released to contributor
+// → Reputation updated
+```
 
-### Disputes
-- `POST /dispute/open` - Open a dispute (returns stake funding instructions)
-- `POST /dispute/fund` - Fund dispute stake using bot wallet (requires confirmation)
-- `POST /dispute/resolve` - Resolve a dispute (admin only)
-- `GET /dispute/:commitId` - Get dispute details
+### 4. Dispute (Optional)
 
-### Webhooks
-- `POST /webhook/mnee` - MNEE transaction status webhook
+```typescript
+// Client disputes with stake
+const stake = calculateStake(commitId)  // Dynamic formula
+contract.openDispute{value: stake}(commitId)
 
-## Security
+// Arbitrator resolves
+contract.resolveDispute(commitId, favorContributor)
+```
 
-See [SECURITY.md](./SECURITY.md) for detailed security architecture.
+## 📊 Dynamic Stake Formula
 
-**Key Points**:
-- ✅ All funding done server-side with BOT_WIF
-- ✅ Explicit user confirmation required
-- ✅ Spending limits enforced
-- ✅ Full audit trail
-- ❌ Never expose BOT_WIF
-- ❌ Never skip confirmation
+```
+Sreq = Sbase × Mtime × Mrep × MAI
+```
 
-## Development
+Where:
+- **Sbase**: Base stake (e.g., 0.01 ETH)
+- **Mtime**: Time multiplier (prevents last-second disputes)
+- **Mrep**: Reputation multiplier (protects proven contributors)
+- **MAI**: AI confidence multiplier (2x for high confidence)
 
-### Build
+See [PROTOCOL.md](./commit-protocol/PROTOCOL.md) for detailed examples.
+
+## 🔐 Security
+
+### Smart Contracts
+- ✅ OpenZeppelin v5.5.0 (ReentrancyGuard, SafeERC20, Ownable)
+- ✅ Custom errors (gas efficient)
+- ✅ 17/17 tests passing
+- ⏳ Audit pending
+
+### Server
+- ✅ Prisma ORM (SQL injection protection)
+- ✅ Environment variable validation
+- ✅ CORS configuration
+- ⏳ Rate limiting (TODO)
+
+## 📚 Documentation
+
+- **[PROTOCOL.md](./commit-protocol/PROTOCOL.md)** - Complete technical guide with examples
+- **[contracts/README.md](./contracts/README.md)** - Smart contract documentation
+- **[server/README.md](./server/README.md)** - Orchestrator API reference
+- **[commit_protocol.pdf](./commit-protocol/commit_protocol.pdf)** - Original whitepaper
+
+## 🧪 Testing
+
+### Smart Contracts
+
+```bash
+cd contracts
+
+# Unit tests (mock tokens)
+forge test --match-contract CommitTest
+
+# Fork tests (real MNEE)
+forge test --match-contract CommitForkTest \
+  --fork-url $ETH_MAINNET_RPC_URL
+
+# Gas report
+forge test --gas-report
+
+# Coverage
+forge coverage
+```
+
+### Server
+
 ```bash
 cd server
+
+# Build TypeScript
 npm run build
+
+# Run with test database
+npm run dev
 ```
 
-### Database
-SQLite database is automatically created at `server/data/commit-protocol.db`
+## 🛣️ Roadmap
 
-Schema includes:
-- `commitments` - Commitment records
-- `disputes` - Dispute records
-- `funding_confirmations` - Pending user confirmations
-- `funding_logs` - Audit trail of all funding actions
+### ✅ Phase 1: Core Protocol (Current)
+- [x] Smart contract implementation
+- [x] ERC-20 escrow with MNEE
+- [x] Orchestrator server (PostgreSQL + Prisma)
+- [x] Basic dispute resolution
+- [x] Discord bot integration
 
-### Testing
-```bash
-# Server tests (when implemented)
-cd server
-npm test
+### 🔄 Phase 2: AI Integration (In Progress)
+- [ ] GitHub Auditor agent
+- [ ] OpenAI-based spec compliance checking
+- [ ] IPFS evidence storage (Pinata)
+- [ ] Dynamic stake calculation (full formula)
 
-# Manual testing via Discord
-# 1. Start server
-# 2. Start bot
-# 3. Interact via Discord
-```
+### 📋 Phase 3: Decentralization (Planned)
+- [ ] Kleros arbitration integration
+- [ ] Reputation oracle (federated signers)
+- [ ] Multi-chain deployment (Base, Arbitrum, Optimism)
+- [ ] DAO governance for protocol parameters
 
-## Troubleshooting
+### 🚀 Phase 4: Advanced Features (Future)
+- [ ] Visual verification agents (Figma API)
+- [ ] Streaming payments for long-term commitments
+- [ ] Reputation import (GitPOAP, Coordinape)
+- [ ] Insurance liquidity pool
 
-### Bot wallet out of funds
-```bash
-# Check bot wallet balance
-# Transfer funds to BOT_WALLET_ADDRESS
-```
+## 🤝 Contributing
 
-### Confirmation expired
-```
-Error: Confirmation has expired
-
-Solution: Create a new commitment/dispute and confirm within 10 minutes
-```
-
-### Daily funding cap exceeded
-```
-Error: Daily funding cap exceeded
-
-Solution: Wait 24 hours or increase DAILY_FUNDING_CAP
-```
-
-### BOT_WIF not configured
-```
-Warning: BOT_WIF not configured - server-side funding is DISABLED
-
-Solution: Set BOT_WALLET_ADDRESS and BOT_WIF in server/.env
-```
-
-## License
-
-MIT
-
-## Contributing
+Contributions welcome! Please:
 
 1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests
-5. Submit a pull request
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-## Support
+## 📄 License
 
-For issues or questions:
-- Open a GitHub issue
-- Check [SECURITY.md](./SECURITY.md) for security-related questions
+MIT License - see [LICENSE](./LICENSE) for details
+
+## 🔗 Links
+
+- **Documentation**: [PROTOCOL.md](./commit-protocol/PROTOCOL.md)
+- **Whitepaper**: [commit_protocol.pdf](./commit-protocol/commit_protocol.pdf)
+- **MNEE Token**: [0x8ccedbAe4916b79da7F3F612EfB2EB93A2bFD6cF](https://etherscan.io/token/0x8ccedbAe4916b79da7F3F612EfB2EB93A2bFD6cF)
+
+---
+
+**Built with**: Solidity • TypeScript • Node.js • PostgreSQL • Prisma • Foundry • OpenZeppelin • IPFS
