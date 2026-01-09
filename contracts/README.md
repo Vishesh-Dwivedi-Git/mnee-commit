@@ -1,6 +1,6 @@
 # Commit Protocol - Smart Contracts
 
-Foundry-based smart contracts for the Commit Protocol using **MNEE ERC-20 token**.
+Foundry-based smart contracts for the Commit Protocol using **MNEE ERC-20 token** with **Discord server integration**.
 
 ## MNEE Token
 
@@ -61,19 +61,25 @@ forge script script/Deploy.s.sol:DeployMainnet \
 
 ```
 Commit.sol
-├── ERC-20 Escrow (MNEE tokens)
+├── Discord Server Registry
+│   ├── registerServer() - Pay 15 MNEE to register
+│   ├── depositToServer() - Add MNEE to balance
+│   ├── withdrawFromServer() - Withdraw unused MNEE
+│   └── getServerBalance() - Check balance
 ├── State Machine
-│   ├── CREATED → FUNDED → SUBMITTED → SETTLED
-│   └── SUBMITTED → DISPUTED → SETTLED/REFUNDED
-├── Core Functions
-│   ├── createCommitment() - Lock MNEE in escrow
-│   ├── submitWork() - Submit evidence CID
-│   ├── openDispute() - Dispute with ETH stake
-│   ├── settle() - Auto-release after window
-│   └── resolveDispute() - Arbitrator decision
+│   └── FUNDED → SUBMITTED → SETTLED/DISPUTED
+├── Core Functions (Relayer Only)
+│   ├── createCommitment(guildId, ...) - Deduct from server balance
+│   ├── submitWork(guildId, ...) - Submit evidence CID
+│   └── openDispute(guildId, ...) - Dispute with ETH stake
+├── Settlement (Owner Only - Cron Job)
+│   ├── settle() - Release funds to contributor
+│   └── batchSettle() - Settle multiple commitments
 └── Admin Functions
-    ├── setBaseStake()
-    └── setArbitrator()
+    ├── setRelayer() - Set trusted bot wallet
+    ├── setRegistrationFee() - Update fee
+    ├── setBaseStake() - Update dispute stake
+    └── setArbitrator() - Update arbitrator
 ```
 
 ## Scripts
@@ -81,8 +87,8 @@ Commit.sol
 | Script | Description |
 |--------|-------------|
 | `scripts/start-anvil.sh` | Start Anvil with mainnet fork |
+| `scripts/fund-test-wallet.sh` | Fund wallet with MNEE tokens |
 | `scripts/deploy-mainnet.sh` | Deploy to Ethereum mainnet |
-| `scripts/test-deploy.sh` | Test deployment on fork |
 
 ## Deployment
 
@@ -121,12 +127,11 @@ The script will:
 ## Testing
 
 ```bash
-# Unit tests (mock tokens)
-forge test --match-contract CommitTest
+# All tests (Discord integration)
+forge test -vv
 
-# Fork tests (requires RPC URL)
-forge test --match-contract CommitForkTest \
-  --fork-url $ETH_MAINNET_RPC_URL
+# Specific test
+forge test --match-test testRegisterServer -vvvv
 
 # Gas report
 forge test --gas-report
@@ -135,33 +140,41 @@ forge test --gas-report
 forge coverage
 ```
 
-**Note**: Fork tests require finding a MNEE whale address. They may fail if the whale address doesn't have sufficient balance. Use unit tests for CI/CD.
+**Test Suite:** 15/15 tests passing
+- Server registration and balance management
+- Commitment creation with balance deduction
+- Relayer access control
+- Batch settlement
 
 ## Workflow Example
 
 ```solidity
-// 1. Creator approves and creates commitment
-IERC20(MNEE).approve(commitContract, amount);
-uint256 id = commit.createCommitment(
+// 1. Register Discord server
+MNEE.approve(commitContract, 15e18);
+commit.registerServer(guildId, adminDiscordId);  // Pays 15 MNEE
+
+// 2. Deposit MNEE to server balance
+MNEE.approve(commitContract, 5000e18);
+commit.depositToServer(guildId, 5000e18);
+
+// 3. Create commitment (relayer only - via Discord bot)
+commit.createCommitment(
+    guildId,
     contributor,
     MNEE_TOKEN,
     1000e18,  // 1000 MNEE
     deadline,
     3 days,   // Dispute window
     "QmSpec..."
-);
+);  // Deducts from server balance
 
-// 2. Contributor submits work
-commit.submitWork(id, "QmEvidence...");
+// 4. Contributor submits work (relayer only)
+commit.submitWork(guildId, commitId, "QmEvidence...");
 
-// 3a. Happy path - wait for dispute window, then settle
-// (after 3 days)
-commit.settle(id);  // MNEE → contributor
-
-// 3b. Dispute path
-commit.openDispute{value: 0.01 ether}(id);
-// Arbitrator resolves
-commit.resolveDispute(id, true);  // true = contributor wins
+// 5. Automatic settlement (owner/cron job)
+// (after deadline + dispute window)
+commit.batchSettle([commitId1, commitId2, ...]);
+// MNEE → contributors
 ```
 
 ## Gas Costs
@@ -180,7 +193,9 @@ commit.resolveDispute(id, true);  // true = contributor wins
 - ✅ ReentrancyGuard
 - ✅ SafeERC20 transfers
 - ✅ Custom errors (gas efficient)
-- ✅ 17/17 unit tests passing
+- ✅ Secure relayer pattern (only bot wallet can call)
+- ✅ Server balance tracking prevents overdraft
+- ✅ 15/15 unit tests passing
 - ⏳ Audit pending
 
 ## Verification
@@ -189,7 +204,7 @@ After deployment, verify on Etherscan:
 
 ```bash
 forge verify-contract CONTRACT_ADDRESS Commit \
-  --constructor-args $(cast abi-encode 'constructor(address)' ARBITRATOR_ADDRESS) \
+  --constructor-args $(cast abi-encode 'constructor(address,address)' ARBITRATOR_ADDRESS MNEE_TOKEN) \
   --etherscan-api-key $ETHERSCAN_API_KEY
 ```
 

@@ -1,13 +1,13 @@
-# MNEE Commit Protocol Discord Bot
+# MNEE Commit Protocol - Discord Bot
 
-A Discord bot integrated with Google's Gemini API that allows users to interact with the MNEE Commit Protocol through natural language.
+Discord bot for interacting with the Commit Protocol. Integrates with Gemini AI for natural language processing and connects to the backend API.
 
 ## Features
 
-- 🤖 **Natural Language Interface**: Talk to the bot in plain English to interact with the commitment protocol
-- 🧠 **Gemini AI Integration**: Powered by Google's Gemini 2.0 Flash with function calling
-- 🔧 **MCP (Model Context Protocol)**: Structured tool definitions for blockchain operations
-- 💰 **Full Protocol Support**: Create commitments, mark deliverables, manage disputes
+- **Slash Commands** - Quick actions for common operations
+- **Natural Language** - Ask questions by mentioning the bot
+- **Role-Based Access** - Only `commit-creator` role can create commitments
+- **Server Registration** - Each Discord server has prepaid MNEE balance
 
 ## Setup
 
@@ -17,155 +17,481 @@ A Discord bot integrated with Google's Gemini API that allows users to interact 
 npm install
 ```
 
-### 2. Configure Environment Variables
+### 2. Configure Environment
 
-Edit the `.env` file:
+```bash
+cp .env.example .env
+```
+
+Edit `.env`:
 
 ```env
 BOT_TOKEN=your_discord_bot_token
-CLIENT_ID=your_discord_client_id
-GUILD_ID=your_discord_guild_id
-
-GEMINI_API_KEY=your_gemini_api_key_here
+CLIENT_ID=your_discord_application_id
+GEMINI_API_KEY=your_gemini_api_key
 SERVER_URL=http://localhost:3000
+COMMIT_CREATOR_ROLE=commit-creator
 ```
 
-**Get a Gemini API Key:**
-- Go to [Google AI Studio](https://aistudio.google.com/app/apikey)
-- Sign in with your Google account
-- Click "Create API Key"
-- Copy and paste it into your `.env` file
-
-### 3. Start the Server
-
-Make sure your MNEE Commit Protocol server is running on `http://localhost:3000` (or update `SERVER_URL` accordingly).
-
-### 4. Run the Bot
+### 3. Start Bot
 
 ```bash
 npm start
 ```
 
-For development with auto-reload:
-```bash
-npm run dev
-```
+## Slash Commands
 
-## Usage
+| Command | Description | Permissions |
+|---------|-------------|-------------|
+| `/register-server` | Register Discord server (15 MNEE fee) | Admin only |
+| `/balance` | Check server's MNEE balance | Everyone |
+| `/deposit <amount>` | Deposit MNEE to server balance | Everyone |
+| `/create-commitment` | Create a work commitment | `commit-creator` role |
+| `/commitments` | List server's commitments | Everyone |
+| `/submit-work` | Submit completed work | Everyone |
 
-Mention the bot in any Discord channel and ask it to perform actions:
+## Natural Language
 
-### Creating a Commitment
-
-```
-@YourBot create a commitment for 10000 satoshis to contributor address 1ABC...XYZ
-The delivery deadline is January 15, 2026 at 5pm
-Set a 72 hour dispute window
-```
-
-### Checking Status
+Mention the bot to use natural language:
 
 ```
-@YourBot what's the status of commitment abc123?
+@CommitBot What's our server balance?
+@CommitBot Create a commitment for 500 MNEE to build an API
+@CommitBot List all pending commitments
 ```
-
-### Marking as Delivered
-
-```
-@YourBot I've delivered commitment xyz789
-The deliverable hash is abcd1234efgh5678
-```
-
-### Opening a Dispute
-
-```
-@YourBot I want to dispute commitment xyz789
-The work wasn't completed as specified
-```
-
-### Listing Commitments
-
-```
-@YourBot show me all commitments for address 1ABC...XYZ
-```
-
-## Architecture
-
-### Files
-
-- **`index.js`**: Main Discord bot entry point
-- **`mcp-server.js`**: MCP tool definitions and system instructions for Gemini
-- **`gemini-service.js`**: Gemini API client with function calling support
-- **`server-client.js`**: HTTP client for MNEE Commit Protocol server API
-
-### Flow
-
-1. User mentions bot with a message
-2. Bot sends message to Gemini API with MCP tool definitions
-3. Gemini analyzes the message and decides which tool to call
-4. Bot executes the tool via server API
-5. Bot sends result back to Gemini for natural language response
-6. Bot replies to user with friendly message
-
-## Available Tools (MCP)
-
-- `create_commitment` - Create a new commitment
-- `mark_delivered` - Mark commitment as delivered
-- `get_commitment` - Get commitment details
-- `list_commitments` - List commitments for an address
-- `open_dispute` - Open a dispute
-- `resolve_dispute` - Resolve a dispute (admin)
-- `get_dispute` - Get dispute details
-
-## Example Conversations
-
-**User:** "@Bot hey, can you explain what this protocol does?"
-
-**Bot:** "The MNEE Commit Protocol is a blockchain-based escrow system on Bitcoin SV. Clients can lock funds that will be released to contributors upon successful delivery. It includes dispute resolution and time-based safeguards."
 
 ---
 
-**User:** "@Bot create a commitment: 5000 sats to 1ContributorAddress, due Jan 10 2026, 48hr dispute window"
+# Backend API Endpoints
 
-**Bot:** "⚙️ Executing: create_commitment...
-✅ Commitment created successfully! 
-- Commit ID: abc123xyz
-- Amount: 5000 satoshis
-- Deadline: January 10, 2026
-- Dispute window: 48 hours"
+> **IMPORTANT**: These endpoints need to be implemented in the backend server.
+> The bot expects these exact routes and response formats.
+
+## Server Registration & Balance
+
+### POST `/server/register`
+
+Register a Discord server with Commit Protocol.
+
+**Request:**
+```json
+{
+  "guildId": "123456789012345678",
+  "adminDiscordId": "987654321098765432"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "guildId": "123456789012345678",
+  "txHash": "0x...",
+  "message": "Server registered successfully"
+}
+```
+
+**Blockchain Action:** Calls `commit.registerServer(guildId, adminDiscordId)` - Requires 15 MNEE
 
 ---
 
-**User:** "@Bot check abc123xyz"
+### POST `/server/:guildId/deposit`
 
-**Bot:** "Here's the commitment status:
-- State: DELIVERED
-- Client: 1ClientAddr...
-- Contributor: 1ContribAddr...
-- Delivered at: January 8, 2026 3:45 PM
-- Funds will auto-release after dispute window"
+Deposit MNEE to server's prepaid balance.
 
-## Troubleshooting
+**Request:**
+```json
+{
+  "amount": "1000000000000000000000"
+}
+```
 
-### Bot not responding
-- Check that `GEMINI_API_KEY` is set correctly
-- Verify the server is running on `SERVER_URL`
-- Check bot has proper Discord permissions (Read Messages, Send Messages)
+**Response:**
+```json
+{
+  "success": true,
+  "guildId": "123456789012345678",
+  "amount": "1000000000000000000000",
+  "txHash": "0x...",
+  "newBalance": "1000000000000000000000"
+}
+```
 
-### "Server is not responding" error
-- Make sure the MNEE server is running: `cd ../server && npm start`
-- Verify `SERVER_URL` in `.env` matches your server address
+**Blockchain Action:** Calls `commit.depositToServer(guildId, amount)`
 
-### Gemini API errors
-- Check your API key is valid
-- Ensure you haven't exceeded quota limits
-- Try regenerating your API key
+---
 
-## Development
+### GET `/server/:guildId`
 
-The bot uses ES modules (`type: "module"` in package.json), so all imports use `.js` extensions.
+Get server info and balance.
 
-To modify bot behavior:
-- Edit system instructions in `mcp-server.js`
-- Add new tools to `MCP_TOOLS` array
-- Update `server-client.js` to handle new endpoints
+**Response:**
+```json
+{
+  "guildId": "123456789012345678",
+  "adminDiscordId": "987654321098765432",
+  "isActive": true,
+  "registeredAt": 1704672000,
+  "balance": {
+    "totalDeposited": "5000000000000000000000",
+    "totalSpent": "1000000000000000000000",
+    "availableBalance": "4000000000000000000000"
+  }
+}
+```
+
+**Blockchain Action:** Calls `commit.getServerBalance(guildId)`
+
+---
+
+### POST `/server/:guildId/withdraw`
+
+Withdraw MNEE from server balance.
+
+**Request:**
+```json
+{
+  "toAddress": "0x1234567890123456789012345678901234567890",
+  "amount": "500000000000000000000"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "txHash": "0x...",
+  "remainingBalance": "3500000000000000000000"
+}
+```
+
+**Blockchain Action:** Calls `commit.withdrawFromServer(guildId, toAddress, amount)`
+
+---
+
+## Commitments
+
+### POST `/commit/create`
+
+Create a new commitment (deducts from server balance).
+
+**Request:**
+```json
+{
+  "guildId": "123456789012345678",
+  "contributorAddress": "0x1234567890123456789012345678901234567890",
+  "amount": "1000000000000000000000",
+  "deadlineTimestamp": 1705276800,
+  "disputeWindowSeconds": 259200,
+  "specCid": "QmSpec123...",
+  "discordUserId": "111222333444555666"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "commitId": "1",
+  "txHash": "0x...",
+  "amount": "1000000000000000000000",
+  "deadline": 1705276800,
+  "state": "FUNDED"
+}
+```
+
+**Blockchain Action:** Calls `commit.createCommitment(guildId, contributor, token, amount, deadline, disputeWindow, specCid)`
+
+---
+
+### POST `/commit/:commitId/submit`
+
+Submit work evidence for a commitment.
+
+**Request:**
+```json
+{
+  "guildId": "123456789012345678",
+  "evidenceCid": "QmEvidence456..."
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "commitId": "1",
+  "txHash": "0x...",
+  "state": "SUBMITTED",
+  "submittedAt": 1705100000
+}
+```
+
+**Blockchain Action:** Calls `commit.submitWork(guildId, commitId, evidenceCid)`
+
+---
+
+### GET `/commit/:commitId`
+
+Get commitment details.
+
+**Response:**
+```json
+{
+  "commitId": "1",
+  "guildId": "123456789012345678",
+  "creator": "0x...",
+  "contributor": "0x...",
+  "token": "0x8ccedbAe4916b79da7F3F612EfB2EB93A2bFD6cF",
+  "amount": "1000000000000000000000",
+  "deadline": 1705276800,
+  "disputeWindow": 259200,
+  "specCid": "QmSpec123...",
+  "evidenceCid": "QmEvidence456...",
+  "state": "SUBMITTED",
+  "createdAt": 1704672000,
+  "submittedAt": 1705100000
+}
+```
+
+---
+
+### GET `/commit/server/:guildId`
+
+List all commitments for a Discord server.
+
+**Query Params:**
+- `state` (optional): Filter by state (FUNDED, SUBMITTED, DISPUTED, SETTLED, REFUNDED, ALL)
+
+**Response:**
+```json
+{
+  "commitments": [
+    {
+      "commitId": "1",
+      "contributor": "0x...",
+      "amount": "1000000000000000000000",
+      "deadline": 1705276800,
+      "state": "SUBMITTED"
+    },
+    {
+      "commitId": "2",
+      "contributor": "0x...",
+      "amount": "500000000000000000000",
+      "deadline": 1705363200,
+      "state": "FUNDED"
+    }
+  ],
+  "total": 2
+}
+```
+
+---
+
+### GET `/commit/contributor/:address`
+
+List all commitments for a contributor address.
+
+**Response:**
+```json
+{
+  "commitments": [...],
+  "total": 5
+}
+```
+
+---
+
+## Disputes
+
+### POST `/dispute/open`
+
+Open a dispute for a commitment.
+
+**Request:**
+```json
+{
+  "guildId": "123456789012345678",
+  "commitId": "1",
+  "reason": "Work does not meet specifications"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "disputeId": "1",
+  "commitId": "1",
+  "txHash": "0x...",
+  "stakeAmount": "10000000000000000",
+  "state": "DISPUTED"
+}
+```
+
+**Blockchain Action:** Calls `commit.openDispute{value: stake}(guildId, commitId)`
+
+---
+
+### GET `/dispute/:commitId`
+
+Get dispute details for a commitment.
+
+**Response:**
+```json
+{
+  "commitId": "1",
+  "hasDispute": true,
+  "disputeId": "1",
+  "stakeAmount": "10000000000000000",
+  "openedAt": 1705100000,
+  "reason": "Work does not meet specifications",
+  "state": "DISPUTED"
+}
+```
+
+---
+
+## Settlement
+
+### POST `/settlement/settle`
+
+Settle a single commitment (owner only).
+
+**Request:**
+```json
+{
+  "commitId": "1"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "commitId": "1",
+  "txHash": "0x...",
+  "recipient": "0x...",
+  "amount": "1000000000000000000000",
+  "state": "SETTLED"
+}
+```
+
+**Blockchain Action:** Calls `commit.settle(commitId)`
+
+---
+
+### POST `/settlement/batch`
+
+Batch settle multiple commitments (owner only / cron job).
+
+**Request:**
+```json
+{
+  "commitIds": ["1", "2", "3"]
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "settled": ["1", "3"],
+  "skipped": ["2"],
+  "txHash": "0x..."
+}
+```
+
+**Blockchain Action:** Calls `commit.batchSettle(commitIds)`
+
+---
+
+### GET `/settlement/pending`
+
+Get commitments ready for settlement.
+
+**Query Params:**
+- `guildId` (optional): Filter by Discord server
+
+**Response:**
+```json
+{
+  "pendingSettlements": [
+    {
+      "commitId": "1",
+      "guildId": "123456789012345678",
+      "contributor": "0x...",
+      "amount": "1000000000000000000000",
+      "disputeWindowEnds": 1705359200
+    }
+  ],
+  "total": 1
+}
+```
+
+---
+
+## Health & Admin
+
+### GET `/health`
+
+Health check endpoint.
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "version": "1.0.0",
+  "contractAddress": "0x...",
+  "networkId": 1
+}
+```
+
+---
+
+### GET `/admin/stats`
+
+Protocol statistics (admin only).
+
+**Response:**
+```json
+{
+  "totalServers": 10,
+  "totalCommitments": 150,
+  "totalVolume": "500000000000000000000000",
+  "pendingSettlements": 5,
+  "activeDisputes": 2
+}
+```
+
+---
+
+## Error Responses
+
+All endpoints should return errors in this format:
+
+```json
+{
+  "success": false,
+  "error": "Error message here",
+  "code": "ERROR_CODE"
+}
+```
+
+Common error codes:
+- `SERVER_NOT_REGISTERED` - Discord server not registered
+- `INSUFFICIENT_BALANCE` - Not enough MNEE in server balance
+- `COMMITMENT_NOT_FOUND` - Commitment ID doesn't exist
+- `INVALID_STATE` - Wrong state for operation
+- `UNAUTHORIZED` - Not allowed to perform action
+- `BLOCKCHAIN_ERROR` - Transaction failed
+
+---
+
+## Notes for Backend Implementation
+
+1. **Relayer Pattern**: All blockchain calls should be made from the relayer wallet (bot wallet)
+2. **Discord ID Storage**: Store mapping of Discord user ID → ETH address
+3. **Event Listening**: Listen for contract events to update local database
+4. **Cron Job**: Run `/settlement/batch` every hour to settle eligible commitments
+5. **Amount Format**: All amounts are in wei (18 decimals). 1 MNEE = 1e18 wei

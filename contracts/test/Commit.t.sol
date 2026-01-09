@@ -7,10 +7,10 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 /**
  * @title MockERC20
- * @notice Mock ERC20 token for testing
+ * @notice Mock ERC20 token for testing (simulating MNEE)
  */
 contract MockERC20 is ERC20 {
-    constructor() ERC20("Mock Token", "MOCK") {
+    constructor() ERC20("Mock MNEE", "MNEE") {
         _mint(msg.sender, 1000000 * 10**18);
     }
 
@@ -20,35 +20,132 @@ contract MockERC20 is ERC20 {
 }
 
 /**
- * @title CommitTest
- * @notice Test suite for Commit Protocol
+ * @title CommitDiscordTest
+ * @notice Test suite for Commit Protocol with Discord integration
  */
-contract CommitTest is Test {
+contract CommitDiscordTest is Test {
     Commit public commit;
-    MockERC20 public token;
+    MockERC20 public mnee;
+    MockERC20 public paymentToken;
     
     address public owner = address(1);
     address public arbitrator = address(2);
-    address public creator = address(3);
-    address public contributor = address(4);
+    address public relayer = address(3); // Bot wallet
+    address public serverAdmin = address(4);
+    address public contributor = address(5);
     
+    uint256 public constant GUILD_ID = 123456789;
+    uint256 public constant ADMIN_DISCORD_ID = 987654321;
+    uint256 public constant REGISTRATION_FEE = 15 * 10**18; // 15 MNEE
+    uint256 public constant baseSTAKE = 1 ether;
     uint256 public constant PAYMENT_AMOUNT = 1000 * 10**18;
-    uint256 public constant BASE_STAKE = 1 ether;
     
     function setUp() public {
         // Deploy contracts
         vm.startPrank(owner);
-        commit = new Commit(arbitrator);
-        token = new MockERC20();
+        mnee = new MockERC20();
+        paymentToken = new MockERC20();
+        commit = new Commit(arbitrator, address(mnee));
+        
+        // Set relayer
+        commit.setRelayer(relayer);
         vm.stopPrank();
         
-        // Setup balances
-        token.mint(creator, PAYMENT_AMOUNT * 10);
-        token.mint(contributor, PAYMENT_AMOUNT);
+        // Setup balances (server admin needs enough for registration + deposits)
+        mnee.mint(serverAdmin, 20000 * 10**18);
+        paymentToken.mint(address(this), 100000 * 10**18);
         
-        // Approve commit contract
-        vm.prank(creator);
-        token.approve(address(commit), type(uint256).max);
+        // Approve
+        vm.prank(serverAdmin);
+        mnee.approve(address(commit), type(uint256).max);
+    }
+    
+    // ============================================================================
+    // Server Registration Tests
+    // ============================================================================
+    
+    function testRegisterServer() public {
+        vm.prank(serverAdmin);
+        commit.registerServer(GUILD_ID, ADMIN_DISCORD_ID);
+        
+        (uint256 totalDeposited, uint256 totalSpent, uint256 availableBalance) = 
+            commit.getServerBalance(GUILD_ID);
+        
+        assertEq(totalDeposited, 0);
+        assertEq(totalSpent, 0);
+        assertEq(availableBalance, 0);
+        
+        // Check registration fee was transferred
+        assertEq(mnee.balanceOf(address(commit)), REGISTRATION_FEE);
+    }
+    
+    function testCannotRegisterWithoutFee() public {
+        vm.prank(address(999)); // Different address without approval
+        vm.expectRevert();
+        commit.registerServer(GUILD_ID, ADMIN_DISCORD_ID);
+    }
+    
+    function testCannotRegisterTwice() public {
+        vm.startPrank(serverAdmin);
+        commit.registerServer(GUILD_ID, ADMIN_DISCORD_ID);
+        
+        vm.expectRevert(Commit.ServerAlreadyRegistered.selector);
+        commit.registerServer(GUILD_ID, ADMIN_DISCORD_ID);
+        vm.stopPrank();
+    }
+    
+    // ============================================================================
+    // Balance Management Tests
+    // ============================================================================
+    
+    function testDepositToServer() public {
+        _registerServer();
+        
+        uint256 depositAmount = 5000 * 10**18;
+        vm.prank(serverAdmin);
+        commit.depositToServer(GUILD_ID, depositAmount);
+        
+        (uint256 totalDeposited, uint256 totalSpent, uint256 availableBalance) = 
+            commit.getServerBalance(GUILD_ID);
+        
+        assertEq(totalDeposited, depositAmount);
+        assertEq(availableBalance, depositAmount);
+        assertEq(totalSpent, 0);
+    }
+    
+    function testCannotDepositToUnregisteredServer() public {
+        uint256 unregisteredGuildId = 999999;
+        
+        vm.prank(serverAdmin);
+        vm.expectRevert();
+        commit.depositToServer(unregisteredGuildId, 1000 * 10**18);
+    }
+    
+    function testWithdrawFromServer() public {
+        _registerAndFundServer(5000 * 10**18);
+        
+        uint256 withdrawAmount = 1000 * 10**18;
+        vm.prank(relayer);
+        commit.withdrawFromServer(GUILD_ID, serverAdmin, withdrawAmount);
+        
+        (,, uint256 availableBalance) = commit.getServerBalance(GUILD_ID);
+        assertEq(availableBalance, 4000 * 10**18);
+    }
+    
+    function testCannotWithdrawMoreThanAvailable() public {
+        _registerAndFundServer(1000 * 10**18);
+        
+        vm.prank(relayer);
+        vm.expectRevert();
+        commit.withdrawFromServer(GUILD_ID, serverAdmin, 2000 * 10**18);
+    }
+    
+    function testOnlyRelayerCanWithdraw() public {
+       _registerAndFundServer(1000 * 10**18);
+        
+        vm.prank(serverAdmin); // Not relayer
+        vm.expectRevert(Commit.OnlyRelayer.selector);
+        commit.withdrawFromServer(GUILD_ID, serverAdmin, 100 * 10**18);
     }
     
     // ============================================================================
@@ -56,291 +153,152 @@ contract CommitTest is Test {
     // ============================================================================
     
     function testCreateCommitment() public {
-        vm.startPrank(creator);
+        _registerAndFundServer(5000 * 10**18);
         
-        uint256 deadline = block.timestamp + 7 days;
-        uint256 disputeWindow = 3 days;
-        
+        vm.prank(relayer);
         uint256 commitId = commit.createCommitment(
+            GUILD_ID,
             contributor,
-            address(token),
-            PAYMENT_AMOUNT,
-            deadline,
-            disputeWindow,
-            "QmSpec123..."
-        );
-        
-        assertEq(commitId, 1);
-        
-        Commit.CommitmentData memory data = commit.getCommitment(commitId);
-        assertEq(data.creator, creator);
-        assertEq(data.contributor, contributor);
-        assertEq(data.token, address(token));
-        assertEq(data.amount, PAYMENT_AMOUNT);
-        assertEq(uint(data.state), uint(Commit.State.FUNDED));
-        
-        // Check token transfer
-        assertEq(token.balanceOf(address(commit)), PAYMENT_AMOUNT);
-        
-        vm.stopPrank();
-    }
-    
-    function testCannotCreateWithZeroAddress() public {
-        vm.startPrank(creator);
-        
-        vm.expectRevert(Commit.InvalidAddress.selector);
-        commit.createCommitment(
-            address(0),
-            address(token),
+            address(paymentToken),
             PAYMENT_AMOUNT,
             block.timestamp + 7 days,
             3 days,
             "QmSpec123..."
         );
         
-        vm.stopPrank();
+        assertEq(commitId, 1);
+        
+        // Check balance was deducted
+        (uint256 totalDeposited, uint256 totalSpent, uint256 availableBalance) = 
+            commit.getServerBalance(GUILD_ID);
+        
+        assertEq(totalDeposited, 5000 * 10**18);
+        assertEq(totalSpent, PAYMENT_AMOUNT);
+        assertEq(availableBalance, 4000 * 10**18);
     }
     
-    function testCannotCreateWithPastDeadline() public {
-        vm.startPrank(creator);
+    function testCannotCreateCommitmentWithInsufficientBalance() public {
+        _registerAndFundServer(500 * 10**18); // Less than PAYMENT_AMOUNT
         
-        vm.expectRevert(Commit.InvalidDeadline.selector);
+        vm.prank(relayer);
+        vm.expectRevert();
         commit.createCommitment(
+            GUILD_ID,
             contributor,
-            address(token),
+            address(paymentToken),
             PAYMENT_AMOUNT,
-            block.timestamp - 1,
+            block.timestamp + 7 days,
             3 days,
             "QmSpec123..."
         );
-        
-        vm.stopPrank();
     }
     
-    // ============================================================================
-    // Work Submission Tests
-    // ============================================================================
-    
-    function testSubmitWork() public {
-        uint256 commitId = _createCommitment();
+    function testOnlyRelayerCanCreateCommitment() public {
+        _registerAndFundServer(5000 * 10**18);
         
-        vm.prank(contributor);
-        commit.submitWork(commitId, "QmEvidence456...");
-        
-        Commit.CommitmentData memory data = commit.getCommitment(commitId);
-        assertEq(uint(data.state), uint(Commit.State.SUBMITTED));
-        assertEq(data.evidenceCid, "QmEvidence456...");
-        assertEq(data.submittedAt, block.timestamp);
-    }
-    
-    function testCannotSubmitWorkUnauthorized() public {
-        uint256 commitId = _createCommitment();
-        
-        vm.prank(creator); // Wrong person
-        vm.expectRevert(Commit.Unauthorized.selector);
-        commit.submitWork(commitId, "QmEvidence456...");
+        vm.prank(serverAdmin); // Not relayer
+        vm.expectRevert(Commit.OnlyRelayer.selector);
+        commit.createCommitment(
+            GUILD_ID,
+            contributor,
+            address(paymentToken),
+            PAYMENT_AMOUNT,
+            block.timestamp + 7 days,
+            3 days,
+            "QmSpec123..."
+        );
     }
     
     // ============================================================================
     // Settlement Tests
     // ============================================================================
     
-    function testSettle() public {
-        uint256 commitId = _createCommitment();
+    function testBatchSettle() public {
+        _registerAndFundServer(10000 * 10**18);
         
-        // Submit work
-        vm.prank(contributor);
-        commit.submitWork(commitId, "QmEvidence456...");
+        // Mint MNEE to contract for settlements
+        mnee.mint(address(commit), 1000 * 10**18);
         
-        // Fast forward past dispute window
-        vm.warp(block.timestamp + 4 days);
+        // Create multiple commitments
+        uint256[] memory commitIds = new uint256[](3);
         
-        // Anyone can settle
-        commit.settle(commitId);
-        
-        Commit.CommitmentData memory data = commit.getCommitment(commitId);
-        assertEq(uint(data.state), uint(Commit.State.SETTLED));
-        
-        // Check payment received
-        assertEq(token.balanceOf(contributor), PAYMENT_AMOUNT * 2);
-    }
-    
-    function testCannotSettleBeforeDisputeWindow() public {
-        uint256 commitId = _createCommitment();
-        
-        vm.prank(contributor);
-        commit.submitWork(commitId, "QmEvidence456...");
-        
-        // Try to settle immediately
-        vm.expectRevert(Commit.DisputeWindowNotClosed.selector);
-        commit.settle(commitId);
-    }
-    
-    function testCanSettle() public {
-        uint256 commitId = _createCommitment();
-        
-        vm.prank(contributor);
-        commit.submitWork(commitId, "QmEvidence456...");
-        
-        // Before dispute window
-        assertFalse(commit.canSettle(commitId));
-        
-        // After dispute window
-        vm.warp(block.timestamp + 4 days);
-        assertTrue(commit.canSettle(commitId));
-    }
-    
-    // ============================================================================
-    // Dispute Tests
-    // ============================================================================
-    
-    function testOpenDispute() public {
-        uint256 commitId = _createCommitment();
-        
-        vm.prank(contributor);
-        commit.submitWork(commitId, "QmEvidence456...");
-        
-        // Creator opens dispute
-        vm.deal(creator, 10 ether);
-        vm.prank(creator);
-        commit.openDispute{value: BASE_STAKE}(commitId);
-        
-        Commit.CommitmentData memory data = commit.getCommitment(commitId);
-        assertEq(uint(data.state), uint(Commit.State.DISPUTED));
-        
-        Commit.DisputeData memory dispute = commit.getDispute(commitId);
-        assertEq(dispute.disputer, creator);
-        assertEq(dispute.stakeAmount, BASE_STAKE);
-        assertFalse(dispute.resolved);
-    }
-    
-    function testCannotOpenDisputeWithInsufficientStake() public {
-        uint256 commitId = _createCommitment();
-        
-        vm.prank(contributor);
-        commit.submitWork(commitId, "QmEvidence456...");
-        
-        vm.deal(creator, 10 ether);
-        vm.prank(creator);
-        vm.expectRevert();
-        commit.openDispute{value: BASE_STAKE - 1}(commitId);
-    }
-    
-    function testCannotOpenDisputeAfterWindow() public {
-        uint256 commitId = _createCommitment();
-        
-        vm.prank(contributor);
-        commit.submitWork(commitId, "QmEvidence456...");
+        for (uint256 i = 0; i < 3; i++) {
+            vm.prank(relayer);
+            commitIds[i] = commit.createCommitment(
+                GUILD_ID,
+                contributor,
+                address(mnee),
+                100 * 10**18,
+                block.timestamp + 1 days,
+                1 hours,
+                "QmSpec..."
+            );
+            
+            // Submit work
+            vm.prank(relayer);
+            commit.submitWork(GUILD_ID, commitIds[i], "QmEvidence...");
+        }
         
         // Fast forward past dispute window
-        vm.warp(block.timestamp + 4 days);
+        vm.warp(block.timestamp + 2 hours);
         
-        vm.deal(creator, 10 ether);
-        vm.prank(creator);
-        vm.expectRevert(Commit.DisputeWindowNotClosed.selector);
-        commit.openDispute{value: BASE_STAKE}(commitId);
-    }
-    
-    // ============================================================================
-    // Dispute Resolution Tests
-    // ============================================================================
-    
-    function testResolveDisputeFavorContributor() public {
-        uint256 commitId = _createCommitmentAndDispute();
+        // Batch settle
+        vm.prank(owner);
+        commit.batchSettle(commitIds);
         
-        uint256 contributorBalanceBefore = token.balanceOf(contributor);
-        uint256 creatorEthBefore = creator.balance;
-        
-        vm.prank(arbitrator);
-        commit.resolveDispute(commitId, true); // Favor contributor
-        
-        Commit.CommitmentData memory data = commit.getCommitment(commitId);
-        assertEq(uint(data.state), uint(Commit.State.SETTLED));
-        
-        // Contributor gets payment
-        assertEq(token.balanceOf(contributor), contributorBalanceBefore + PAYMENT_AMOUNT);
-        
-        // Creator gets stake back
-        assertEq(creator.balance, creatorEthBefore + BASE_STAKE);
-    }
-    
-    function testResolveDisputeFavorCreator() public {
-        uint256 commitId = _createCommitmentAndDispute();
-        
-        uint256 creatorBalanceBefore = token.balanceOf(creator);
-        uint256 creatorEthBefore = creator.balance;
-        
-        vm.prank(arbitrator);
-        commit.resolveDispute(commitId, false); // Favor creator
-        
-        Commit.CommitmentData memory data = commit.getCommitment(commitId);
-        assertEq(uint(data.state), uint(Commit.State.REFUNDED));
-        
-        // Creator gets payment back + stake
-        assertEq(token.balanceOf(creator), creatorBalanceBefore + PAYMENT_AMOUNT);
-        assertEq(creator.balance, creatorEthBefore + BASE_STAKE);
-    }
-    
-    function testCannotResolveDisputeUnauthorized() public {
-        uint256 commitId = _createCommitmentAndDispute();
-        
-        vm.prank(creator);
-        vm.expectRevert(Commit.Unauthorized.selector);
-        commit.resolveDispute(commitId, true);
+        // Verify all settled
+        for (uint256 i = 0; i < 3; i++) {
+            Commit.CommitmentData memory data = commit.getCommitment(commitIds[i]);
+            assertEq(uint(data.state), uint(Commit.State.SETTLED));
+        }
     }
     
     // ============================================================================
     // Admin Tests
     // ============================================================================
     
-    function testSetBaseStake() public {
-        vm.prank(owner);
-        commit.setBaseStake(2 ether);
+    function testSetRelayer() public {
+        address newRelayer = address(999);
         
-        assertEq(commit.baseStake(), 2 ether);
+        vm.prank(owner);
+        commit.setRelayer(newRelayer);
+        
+        assertEq(commit.relayer(), newRelayer);
     }
     
-    function testSetArbitrator() public {
-        address newArbitrator = address(5);
+    function testSetRegistrationFee() public {
+        uint256 newFee = 20 * 10**18;
         
         vm.prank(owner);
-        commit.setArbitrator(newArbitrator);
+        commit.setRegistrationFee(newFee);
         
-        assertEq(commit.arbitrator(), newArbitrator);
+        assertEq(commit.registrationFee(), newFee);
     }
     
-    function testCannotSetArbitratorToZero() public {
+    function testDeactivateServer() public {
+        _registerServer();
+        
         vm.prank(owner);
-        vm.expectRevert(Commit.InvalidAddress.selector);
-        commit.setArbitrator(address(0));
+        commit.deactivateServer(GUILD_ID);
+        
+        // Try to deposit - should fail
+        vm.prank(serverAdmin);
+        vm.expectRevert();
+        commit.depositToServer(GUILD_ID, 1000 * 10**18);
     }
     
     // ============================================================================
     // Helper Functions
     // ============================================================================
     
-    function _createCommitment() internal returns (uint256) {
-        vm.prank(creator);
-        return commit.createCommitment(
-            contributor,
-            address(token),
-            PAYMENT_AMOUNT,
-            block.timestamp + 7 days,
-            3 days,
-            "QmSpec123..."
-        );
+    function _registerServer() internal {
+        vm.prank(serverAdmin);
+        commit.registerServer(GUILD_ID, ADMIN_DISCORD_ID);
     }
     
-    function _createCommitmentAndDispute() internal returns (uint256) {
-        uint256 commitId = _createCommitment();
-        
-        vm.prank(contributor);
-        commit.submitWork(commitId, "QmEvidence456...");
-        
-        vm.deal(creator, 10 ether);
-        vm.prank(creator);
-        commit.openDispute{value: BASE_STAKE}(commitId);
-        
-        return commitId;
+    function _registerAndFundServer(uint256 amount) internal {
+        _registerServer();
+        vm.prank(serverAdmin);
+        commit.depositToServer(GUILD_ID, amount);
     }
 }

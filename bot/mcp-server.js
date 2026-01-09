@@ -1,90 +1,162 @@
 /**
  * MCP Server for MNEE Commit Protocol
- * Exposes server routes as tools for Gemini API
+ * Exposes Discord server-specific tools for Gemini API
+ * 
+ * Updated for Discord server integration with prepaid balance system
  */
 
 export const MCP_TOOLS = [
+  // ============================================================================
+  // Server Registration & Balance
+  // ============================================================================
   {
-    name: "create_commitment",
+    name: "register_server",
     description:
-      "Create a new commitment between a client and contributor. Returns funding instructions for server-side payment. The commitment will be created but unfunded until fund_commitment is called.",
+      "Register a Discord server to use Commit Protocol. Requires 15 MNEE registration fee. Each server gets a prepaid balance for creating commitments.",
     parameters: {
       type: "object",
       properties: {
-        clientAddress: {
+        guildId: {
           type: "string",
-          description: "Client's Bitcoin SV address",
+          description: "Discord guild/server ID",
+        },
+        adminDiscordId: {
+          type: "string",
+          description: "Discord user ID of the server admin",
+        },
+      },
+      required: ["guildId", "adminDiscordId"],
+    },
+  },
+  {
+    name: "deposit_balance",
+    description:
+      "Deposit MNEE tokens to a Discord server's prepaid balance. The server balance is used to fund commitments.",
+    parameters: {
+      type: "object",
+      properties: {
+        guildId: {
+          type: "string",
+          description: "Discord guild/server ID",
+        },
+        amount: {
+          type: "string",
+          description: "Amount of MNEE to deposit (in wei, e.g., '1000000000000000000' for 1 MNEE)",
+        },
+      },
+      required: ["guildId", "amount"],
+    },
+  },
+  {
+    name: "get_server_balance",
+    description:
+      "Get the current MNEE balance for a Discord server, including total deposited, total spent, and available balance.",
+    parameters: {
+      type: "object",
+      properties: {
+        guildId: {
+          type: "string",
+          description: "Discord guild/server ID",
+        },
+      },
+      required: ["guildId"],
+    },
+  },
+  {
+    name: "withdraw_balance",
+    description:
+      "Withdraw unused MNEE from a Discord server's balance. Only callable by server admin via bot.",
+    parameters: {
+      type: "object",
+      properties: {
+        guildId: {
+          type: "string",
+          description: "Discord guild/server ID",
+        },
+        toAddress: {
+          type: "string",
+          description: "Ethereum address to withdraw MNEE to",
+        },
+        amount: {
+          type: "string",
+          description: "Amount of MNEE to withdraw (in wei)",
+        },
+      },
+      required: ["guildId", "toAddress", "amount"],
+    },
+  },
+
+  // ============================================================================
+  // Commitment Management
+  // ============================================================================
+  {
+    name: "create_commitment",
+    description:
+      "Create a new commitment from a Discord server's prepaid balance. The amount is deducted from the server's available balance. User must have 'commit-creator' role.",
+    parameters: {
+      type: "object",
+      properties: {
+        guildId: {
+          type: "string",
+          description: "Discord guild/server ID",
         },
         contributorAddress: {
           type: "string",
-          description:
-            "Contributor's Bitcoin SV address who will receive funds",
+          description: "Ethereum address of the contributor who will receive payment",
         },
         amount: {
-          type: "number",
-          description:
-            "Amount of satoshis to lock in the commitment (must be positive)",
+          type: "string",
+          description: "Amount of MNEE to pay (in wei)",
         },
-        deliveryDeadline: {
+        deadlineTimestamp: {
           type: "number",
           description: "Unix timestamp when delivery must be completed by",
         },
         disputeWindowSeconds: {
           type: "number",
-          description:
-            "Number of seconds after delivery during which disputes can be opened (must be positive)",
+          description: "Number of seconds after delivery during which disputes can be opened",
         },
-        metadata: {
-          type: "object",
-          description:
-            "Optional metadata object with additional information about the commitment",
+        specCid: {
+          type: "string",
+          description: "IPFS CID containing the work specification",
+        },
+        discordUserId: {
+          type: "string",
+          description: "Discord user ID of the commitment creator",
         },
       },
       required: [
-        "clientAddress",
+        "guildId",
         "contributorAddress",
         "amount",
-        "deliveryDeadline",
+        "deadlineTimestamp",
         "disputeWindowSeconds",
+        "specCid",
+        "discordUserId",
       ],
     },
   },
   {
-    name: "fund_commitment",
+    name: "submit_work",
     description:
-      "Fund a commitment using the bot wallet. REQUIRES EXPLICIT USER CONFIRMATION before calling. Ask user to confirm by typing YES.",
+      "Submit completed work for a commitment with evidence. Only the contributor can submit work.",
     parameters: {
       type: "object",
       properties: {
+        guildId: {
+          type: "string",
+          description: "Discord guild/server ID",
+        },
         commitId: {
           type: "string",
-          description: "The unique ID of the commitment to fund",
+          description: "The unique ID of the commitment",
         },
-        confirmerAddress: {
+        evidenceCid: {
           type: "string",
-          description: "Bitcoin SV address of the user confirming this action",
+          description: "IPFS CID containing the work evidence/deliverable",
         },
       },
-      required: ["commitId"],
-    },
-  },
-  {
-    name: "mark_delivered",
-    description:
-      "Mark a commitment as delivered by providing proof of delivery. Only the contributor can call this.",
-    parameters: {
-      type: "object",
-      properties: {
-        commitId: {
-          type: "string",
-          description: "The unique ID of the commitment to mark as delivered",
-        },
-        deliverableHash: {
-          type: "string",
-          description: "Hash of the deliverable content as proof of delivery",
-        },
-      },
-      required: ["commitId", "deliverableHash"],
+      required: ["guildId", "commitId", "evidenceCid"],
     },
   },
   {
@@ -94,98 +166,74 @@ export const MCP_TOOLS = [
     parameters: {
       type: "object",
       properties: {
-        id: {
+        commitId: {
           type: "string",
           description: "The unique ID of the commitment to retrieve",
         },
       },
-      required: ["id"],
+      required: ["commitId"],
     },
   },
   {
-    name: "list_commitments",
+    name: "list_server_commitments",
     description:
-      "List all commitments for a specific address (either as client or contributor)",
+      "List all commitments for a specific Discord server",
     parameters: {
       type: "object",
       properties: {
-        address: {
+        guildId: {
           type: "string",
-          description: "Bitcoin SV address to list commitments for",
+          description: "Discord guild/server ID",
+        },
+        state: {
+          type: "string",
+          enum: ["FUNDED", "SUBMITTED", "DISPUTED", "SETTLED", "REFUNDED", "ALL"],
+          description: "Filter by commitment state (optional, defaults to ALL)",
         },
       },
-      required: ["address"],
+      required: ["guildId"],
     },
   },
+  {
+    name: "list_contributor_commitments",
+    description:
+      "List all commitments for a specific contributor address",
+    parameters: {
+      type: "object",
+      properties: {
+        contributorAddress: {
+          type: "string",
+          description: "Ethereum address of the contributor",
+        },
+      },
+      required: ["contributorAddress"],
+    },
+  },
+
+  // ============================================================================
+  // Disputes
+  // ============================================================================
   {
     name: "open_dispute",
     description:
-      "Open a dispute for a commitment if the client is unsatisfied with the delivery. Returns funding instructions for the dispute stake. Must be called within the dispute window.",
+      "Open a dispute for a commitment if the creator is unsatisfied with the work. Requires ETH stake. Must be within dispute window.",
     parameters: {
       type: "object",
       properties: {
+        guildId: {
+          type: "string",
+          description: "Discord guild/server ID",
+        },
         commitId: {
           type: "string",
           description: "The unique ID of the commitment to dispute",
         },
-        clientAddress: {
-          type: "string",
-          description: "Client's Bitcoin SV address",
-        },
         reason: {
           type: "string",
-          description: "Optional reason/description for opening the dispute",
+          description: "Reason for opening the dispute",
         },
       },
-      required: ["commitId", "clientAddress"],
-    },
-  },
-  {
-    name: "fund_dispute",
-    description:
-      "Fund a dispute stake using the bot wallet. REQUIRES EXPLICIT USER CONFIRMATION before calling. Ask user to confirm by typing YES.",
-    parameters: {
-      type: "object",
-      properties: {
-        disputeId: {
-          type: "string",
-          description: "The unique ID of the dispute to fund",
-        },
-        commitId: {
-          type: "string",
-          description: "The commitment ID associated with this dispute",
-        },
-        confirmerAddress: {
-          type: "string",
-          description: "Bitcoin SV address of the user confirming this action",
-        },
-      },
-      required: ["disputeId", "commitId"],
-    },
-  },
-  {
-    name: "resolve_dispute",
-    description:
-      "Resolve an open dispute in favor of either the client or contributor. Admin-only action.",
-    parameters: {
-      type: "object",
-      properties: {
-        commitId: {
-          type: "string",
-          description: "The unique ID of the commitment with an open dispute",
-        },
-        resolution: {
-          type: "string",
-          enum: ["CLIENT", "CONTRIBUTOR"],
-          description:
-            "Who to resolve the dispute in favor of: CLIENT (refund) or CONTRIBUTOR (release funds)",
-        },
-        adminSecret: {
-          type: "string",
-          description: "Admin secret key for authentication",
-        },
-      },
-      required: ["commitId", "resolution"],
+      required: ["guildId", "commitId"],
     },
   },
   {
@@ -197,11 +245,29 @@ export const MCP_TOOLS = [
       properties: {
         commitId: {
           type: "string",
-          description:
-            "The unique ID of the commitment to get dispute info for",
+          description: "The unique ID of the commitment to get dispute info for",
         },
       },
       required: ["commitId"],
+    },
+  },
+
+  // ============================================================================
+  // Settlement
+  // ============================================================================
+  {
+    name: "get_pending_settlements",
+    description:
+      "Get a list of commitments that are ready to be settled (past dispute window)",
+    parameters: {
+      type: "object",
+      properties: {
+        guildId: {
+          type: "string",
+          description: "Optional: filter by Discord guild/server ID",
+        },
+      },
+      required: [],
     },
   },
 ];
@@ -210,75 +276,59 @@ export const MCP_TOOLS = [
  * Get system instruction for Gemini API
  */
 export function getSystemInstruction() {
-  return `You are an AI assistant for the MNEE Commit Protocol, a blockchain-based commitment and escrow system built on Bitcoin SV.
+  return `You are an AI assistant for the MNEE Commit Protocol Discord Bot. This is a trustless escrow system for work commitments using MNEE tokens on Ethereum.
 
-Your role is to help users interact with the commitment protocol through Discord. You can:
-1. Create commitments (returns funding instructions)
-2. Fund commitments using the bot wallet (REQUIRES USER CONFIRMATION)
-3. Check commitment and dispute status
-4. Mark deliverables as delivered
-5. Open disputes (returns funding instructions)
-6. Fund disputes using the bot wallet (REQUIRES USER CONFIRMATION)
+## Your Role
+Help Discord users manage work commitments through natural language. You interact with the backend API via tool calls.
 
-🔒 SECURITY - CRITICAL:
-- NEVER ask users for private keys (WIF) in Discord
-- ALL funding is done server-side using the bot wallet
-- ALWAYS require explicit user confirmation before calling fund_commitment or fund_dispute
-- Users must type "YES" to confirm funding actions
-- Never expose sensitive data like WIF keys in responses
+## Key Concepts
+- **Discord Server**: Each server has a prepaid MNEE balance for funding commitments
+- **Registration**: Servers pay 15 MNEE to register (one-time)
+- **Commitments**: Work agreements funded from server balance
+- **Evidence CID**: IPFS hash of specification or deliverable
 
-IMPORTANT RULES:
-- Always extract and validate user intent from natural language
-- For funding actions, ALWAYS ask for confirmation first
-- Provide clear explanations of what will happen
-- If information is missing, ask the user for it
+## Commands You Handle
+1. **Server Registration** - Register a Discord server (15 MNEE fee)
+2. **Balance Management** - Deposit/withdraw/check MNEE balance
+3. **Create Commitment** - Create work agreement (deducts from balance)
+4. **Submit Work** - Contributor submits deliverable with evidence
+5. **Check Status** - View commitment or server details
+6. **Open Dispute** - Challenge work quality (requires stake)
 
-TWO-STEP FUNDING PROCESS:
-1. CREATE: Call create_commitment or open_dispute → Returns funding instructions
-2. CONFIRM & FUND: Ask user for explicit confirmation → Call fund_commitment or fund_dispute
+## Role Requirements
+- Only users with 'commit-creator' role can create commitments
+- Server admins can deposit/withdraw balance
+- Contributors can submit work for their commitments
 
-EXAMPLE INTERACTIONS:
+## IMPORTANT RULES
+1. **Always include guildId** - Get from Discord context, never ask user
+2. **Validate addresses** - Ensure ETH addresses are valid (0x + 40 hex chars)
+3. **Convert amounts** - MNEE uses 18 decimals (1 MNEE = 1e18 wei)
+4. **Check balance first** - Before creating commitments, verify server has funds
+5. **Be clear about fees** - 15 MNEE registration, commitment amounts
 
-User: "Create a commitment for 1000 sats to address 1ABC... due by tomorrow"
-Response: 
-1. Call create_commitment
-2. Show funding instructions
-3. Ask: "To fund this commitment, I will transfer 1000 satoshis from the bot wallet. Reply YES to confirm or NO to cancel."
+## Example Interactions
 
-User: "YES"
-Response:
-1. Call fund_commitment with confirmerAddress
-2. Show success message with transaction details
+**User**: "Check our server's balance"
+→ Call get_server_balance with guildId from context
 
-User: "What's the status of commitment abc123?"
-Response: Call get_commitment → Show status details
+**User**: "Create a commitment for 500 MNEE to 0x123... for building an API, due in 7 days"
+→ Call create_commitment with guildId, contributor address, amount in wei, deadline
 
-User: "I delivered the work for commitment xyz789, here's the proof hash: abcd1234"
-Response: Call mark_delivered → Confirm delivery recorded
+**User**: "What commitments do we have?"
+→ Call list_server_commitments with guildId
 
-User: "I want to dispute commitment xyz789"
-Response:
-1. Call open_dispute
-2. Show stake amount and funding instructions
-3. Ask: "To activate this dispute, I will transfer [stake amount] satoshis from the bot wallet. Reply YES to confirm or NO to cancel."
+**User**: "I finished the work for commitment #5, here's my evidence: QmABC123"
+→ Call submit_work with guildId, commitId, evidenceCid
 
-CONFIRMATION FORMAT:
-When asking for funding confirmation, always format like this:
-"⚠️ CONFIRMATION REQUIRED
-I will fund [commitment/dispute] [ID] using the bot wallet.
-Amount: [X] satoshis
-Action: Transfer from bot wallet to escrow
+## Amount Formatting
+When displaying amounts to users:
+- Convert from wei: divide by 1e18
+- Show as "500 MNEE" not "500000000000000000000 wei"
 
-Reply **YES** to confirm or **NO** to cancel.
-(This confirmation expires in 10 minutes)"
+When calling API:
+- Convert to wei: multiply by 1e18
+- Example: 500 MNEE → "500000000000000000000"
 
-FUNDING SUCCESS FORMAT:
-"✅ Funding successful!
-Commitment ID: abc-123
-Amount: 1000 satoshis
-Transaction ID: [ticketId]
-
-The commitment is now active and funded."
-
-Always be helpful, secure, and guide users through the confirmation process.`;
+Always be helpful and guide users through the process!`;
 }

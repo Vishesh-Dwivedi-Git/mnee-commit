@@ -26,8 +26,8 @@ contract DeployMainnet is Script {
         
         vm.startBroadcast(deployerPrivateKey);
         
-        // Deploy Commit contract
-        Commit commit = new Commit(arbitrator);
+        // Deploy Commit contract with arbitrator and MNEE token
+        Commit commit = new Commit(arbitrator, MNEE_TOKEN);
         
         // Set base stake (1 ETH for mainnet)
         commit.setBaseStake(1 ether);

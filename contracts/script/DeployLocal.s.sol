@@ -27,8 +27,8 @@ contract DeployLocal is Script {
         
         vm.startBroadcast(deployerPrivateKey);
         
-        // Deploy Commit contract
-        Commit commit = new Commit(arbitrator);
+        // Deploy Commit contract with MNEE token
+        Commit commit = new Commit(arbitrator, MNEE_TOKEN);
         
         // Set lower base stake for testing (0.01 ETH)
         commit.setBaseStake(0.01 ether);

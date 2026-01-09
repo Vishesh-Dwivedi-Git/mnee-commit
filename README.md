@@ -1,35 +1,46 @@
 # Commit Protocol
 
-> **Optimistic Agentic Settlement for On-Chain Work Commitments**
+> **Optimistic Agentic Settlement for On-Chain Work Commitments with Discord Integration**
 
-A trustless escrow system for work commitments that combines smart contract escrow, AI-powered verification, and optimistic settlement with dynamic economic security.
+A trustless escrow system for work commitments that combines smart contract escrow, AI-powered verification, and optimistic settlement with dynamic economic security. Discord servers register and manage prepaid MNEE balances for seamless commitment creation.
 
 ## 🎯 Overview
 
-Commit Protocol enables DAOs and projects to:
-- ✅ **Automatic settlement** after deadline + dispute window
+Commit Protocol enables Discord communities and projects to:
+- ✅ **Discord server registration** with 15 MNEE fee
+- ✅ **Prepaid balance system** for MNEE token management
+- ✅ **Automatic settlement** via cron job after deadline + dispute window
 - ✅ **AI verification** for objective "done" criteria
 - ✅ **Dynamic stakes** that scale with task value, reputation, and AI confidence
 - ✅ **Reputation tracking** to reward consistent contributors
+- ✅ **Secure relayer pattern** - bot wallet controls all contract interactions
 
 ## 🏗️ Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     Commit Protocol                          │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐ │
-│  │   Smart      │    │ Orchestrator │    │  AI Agents   │ │
-│  │  Contracts   │◄───┤   Server     │◄───┤  (GitHub)    │ │
-│  │  (Solidity)  │    │ (Node.js)    │    │  (OpenAI)    │ │
-│  └──────────────┘    └──────────────┘    └──────────────┘ │
-│         │                    │                    │         │
-│         │                    │                    │         │
-│    MNEE Token          PostgreSQL             IPFS/Pinata  │
-│  (Ethereum L1)          (Supabase)                          │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                      Commit Protocol                              │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│  ┌────────────┐   ┌──────────────┐   ┌──────────────┐          │
+│  │  Discord   │──▶│  Bot Wallet  │──▶│    Smart     │          │
+│  │   Server   │   │  (Relayer)   │   │  Contracts   │          │
+│  │  (Guild)   │   │              │   │  (Solidity)  │          │
+│  └────────────┘   └──────────────┘   └──────────────┘          │
+│                           │                    │                 │
+│   Register (15 MNEE) ─────┘                    │                 │
+│   Deposit Balance                              │                 │
+│   Create Commitments ──────────────────────────┘                 │
+│                                                │                  │
+│                                           MNEE Token              │
+│                                         (Ethereum L1)             │
+│                                                                   │
+│         ┌──────────────┐         ┌──────────────┐               │
+│         │ Cron Job     │────────▶│  AI Agents   │               │
+│         │ (Settlement) │         │  (GitHub)    │               │
+│         └──────────────┘         └──────────────┘               │
+│                                                                   │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ## 💰 MNEE Token
@@ -45,13 +56,15 @@ Commit Protocol enables DAOs and projects to:
 mnee-commit/
 ├── contracts/          # Solidity smart contracts (Foundry)
 │   ├── src/
-│   │   └── Commit.sol          # Main escrow contract
+│   │   └── Commit.sol          # Main escrow contract with Discord integration
 │   ├── test/
-│   │   ├── Commit.t.sol        # Unit tests
-│   │   └── CommitFork.t.sol    # Fork tests with MNEE
-│   └── script/
-│       ├── Deploy.s.sol        # Mainnet deployment
-│       └── DeployLocal.s.sol   # Local fork deployment
+│   │   └── Commit.t.sol        # Tests for Discord server balance system
+│   ├── script/
+│   │   ├── Deploy.s.sol        # Mainnet deployment
+│   │   └── DeployLocal.s.sol   # Local fork deployment
+│   └── scripts/
+│       ├── start-anvil.sh      # Start local fork
+│       └── fund-test-wallet.sh # Fund wallets with MNEE
 │
 ├── server/             # Orchestrator backend (Node.js + TypeScript)
 │   ├── src/
@@ -140,44 +153,68 @@ npm start
 
 ## 🔄 Workflow
 
-### 1. Create Commitment
+### 1. Discord Server Registration
 
 ```typescript
-// Client creates commitment via API
-POST /commit/create
-{
-  "clientAddress": "0x...",
-  "contributorAddress": "0x...",
-  "amount": "1000000000000000000000",  // 1000 MNEE
-  "tokenAddress": "0x8ccedbAe4916b79da7F3F612EfB2EB93A2bFD6cF",
-  "deliveryDeadline": 1704672000,
-  "disputeWindowSeconds": 259200,
-  "specCid": "QmSpec..."
-}
-
-// Client funds on-chain
-contract.createCommitment(...)
+// Server admin registers Discord server
+const tx = await contract.registerServer(
+  guildId,        // Discord guild ID (e.g., 123456789)
+  adminDiscordId  // Admin's Discord user ID
+);
+// Pays 15 MNEE registration fee
+// Server is now active and can create commitments
 ```
 
-### 2. Submit Work
+### 2. Fund Server Balance
 
 ```typescript
-// Contributor submits work
-contract.submitWork(commitId, "QmEvidence...")
+// Server admin deposits MNEE to prepaid balance
+const amount = ethers.utils.parseEther("5000"); // 5000 MNEE
+await contract.depositToServer(guildId, amount);
 
-// Orchestrator triggers AI agents
-// → GitHub Auditor analyzes code
-// → Evidence stored on IPFS
-// → Confidence score calculated
+// Check balance
+const {totalDeposited, totalSpent, availableBalance} = 
+  await contract.getServerBalance(guildId);
 ```
 
-### 3. Settlement
+### 3. Create Commitment (via Discord Bot)
 
 ```typescript
-// After deadline + dispute window (automatic)
-contract.settle(commitId)
-// → MNEE tokens released to contributor
-// → Reputation updated
+// User types: /create-commitment @contributor 1000 MNEE "Build API"
+// Bot checks user has "commit-creator" role
+// Bot wallet (relayer) calls contract:
+
+await contract.createCommitment(
+  guildId,                    // Discord server ID
+  contributorAddress,         // Contributor wallet
+  mneeTokenAddress,           // MNEE token
+  "1000000000000000000000",   // 1000 MNEE
+  deadline,
+  disputeWindow,
+  specCid
+);
+// Deducts 1000 MNEE from server balance
+```
+
+### 4. Submit Work
+
+```typescript
+// Contributor types: /submit <commit-id> <evidence-link>
+// Bot wallet calls contract:
+await contract.submitWork(guildId, commitId, evidenceCid);
+
+// AI agents analyze work
+// Evidence stored on IPFS
+```
+
+### 5. Automatic Settlement
+
+```typescript
+// Cron job runs every hour
+// Detects commitments past deadline + dispute window
+// Owner wallet calls:
+await contract.batchSettle([commitId1, commitId2, ...]);
+// MNEE tokens transferred to contributors
 ```
 
 ### 4. Dispute (Optional)
@@ -210,8 +247,17 @@ See [PROTOCOL.md](./commit-protocol/PROTOCOL.md) for detailed examples.
 ### Smart Contracts
 - ✅ OpenZeppelin v5.5.0 (ReentrancyGuard, SafeERC20, Ownable)
 - ✅ Custom errors (gas efficient)
-- ✅ 17/17 tests passing
+- ✅ Secure relayer pattern - only bot wallet can call protected functions
+- ✅ Server registration with 15 MNEE fee prevents spam
+- ✅ Balance tracking prevents overdraft
+- ✅ 15/15 tests passing
 - ⏳ Audit pending
+
+### Discord Bot Security
+- ✅ Bot private key is the only way to call contract functions
+- ✅ Bot verifies Discord roles before any blockchain interaction
+- ✅ `onlyRelayer` and `onlyRegisteredServer` modifiers
+- ✅ No on-chain role storage - Discord is source of truth
 
 ### Server
 - ✅ Prisma ORM (SQL injection protection)
@@ -219,11 +265,50 @@ See [PROTOCOL.md](./commit-protocol/PROTOCOL.md) for detailed examples.
 - ✅ CORS configuration
 - ⏳ Rate limiting (TODO)
 
+## 🔌 Backend API Endpoints
+
+The following endpoints must be implemented in the backend server. See [bot/README.md](./bot/README.md) for detailed specifications.
+
+### Server Management
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/server/register` | Register Discord server (15 MNEE) |
+| POST | `/server/:guildId/deposit` | Deposit MNEE to balance |
+| POST | `/server/:guildId/withdraw` | Withdraw MNEE |
+| GET | `/server/:guildId` | Get server info & balance |
+
+### Commitments
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/commit/create` | Create commitment (deducts balance) |
+| POST | `/commit/:id/submit` | Submit work evidence |
+| GET | `/commit/:id` | Get commitment details |
+| GET | `/commit/server/:guildId` | List by server |
+| GET | `/commit/contributor/:address` | List by contributor |
+
+### Disputes & Settlement
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/dispute/open` | Open dispute with stake |
+| GET | `/dispute/:commitId` | Get dispute details |
+| POST | `/settlement/batch` | Batch settle (cron job) |
+| GET | `/settlement/pending` | Get pending settlements |
+
+### Health
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/health` | Health check |
+| GET | `/admin/stats` | Protocol statistics |
+
 ## 📚 Documentation
 
 - **[PROTOCOL.md](./commit-protocol/PROTOCOL.md)** - Complete technical guide with examples
 - **[contracts/README.md](./contracts/README.md)** - Smart contract documentation
-- **[server/README.md](./server/README.md)** - Orchestrator API reference
+- **[bot/README.md](./bot/README.md)** - Bot & API endpoint documentation
 - **[commit_protocol.pdf](./commit-protocol/commit_protocol.pdf)** - Original whitepaper
 
 ## 🧪 Testing
@@ -233,18 +318,19 @@ See [PROTOCOL.md](./commit-protocol/PROTOCOL.md) for detailed examples.
 ```bash
 cd contracts
 
-# Unit tests (mock tokens)
-forge test --match-contract CommitTest
-
-# Fork tests (real MNEE)
-forge test --match-contract CommitForkTest \
-  --fork-url $ETH_MAINNET_RPC_URL
+# Unit tests (Discord integration)
+forge test -vv
 
 # Gas report
 forge test --gas-report
 
 # Coverage
 forge coverage
+
+# Test on local fork
+./scripts/start-anvil.sh
+./scripts/fund-test-wallet.sh 5000
+forge script script/DeployLocal.s.sol:DeployLocal --rpc-url http://localhost:8545 --broadcast
 ```
 
 ### Server
