@@ -63,23 +63,8 @@ class ServerClient {
   }
 
   // ============================================================================
-  // Server Registration & Balance
+  // Server Balance (Read Only)
   // ============================================================================
-
-  /**
-   * Register a Discord server (15 MNEE fee)
-   */
-  async registerServer(guildId, adminDiscordId) {
-    try {
-      const response = await this.client.post("/server/register", {
-        guildId,
-        adminDiscordId,
-      });
-      return { success: true, data: response.data };
-    } catch (error) {
-      return this.handleError(error, "register server");
-    }
-  }
 
   /**
    * Get server balance
@@ -254,12 +239,112 @@ class ServerClient {
   /**
    * Execute a tool call from Gemini
    * Context contains: guildId, discordId, discordUsername, isAdmin, roles
+   * 
+   * IMPORTANT: guildId comes from context, NOT from Gemini params
    */
   async executeTool(toolName, params, context = {}) {
     const { guildId, discordId, discordUsername } = context;
 
     switch (toolName) {
-      // User/Wallet
+      // ==================== Quick Query Tools ====================
+      
+      case "help":
+        return {
+          success: true,
+          data: {
+            message: "Here's what I can help with:",
+            commands: [
+              "**Wallet**: link my wallet, check my wallet",
+              "**Commitments**: create commitment, submit work, list commitments, my commitments",
+              "**Status**: check commitment status, time left on commitment",
+              "**Server**: check server balance, is server registered",
+              "**Disputes**: open dispute",
+            ],
+            tip: "Try saying 'create a commitment for @username, 500 MNEE, for building a website, due in 7 days'",
+          },
+        };
+
+      case "who_is":
+        return await this.getWalletByUsername(params.username);
+
+      case "am_i_registered":
+        return await this.getWalletByDiscordId(discordId);
+
+      case "is_server_active": {
+        const serverResult = await this.getServerBalance(guildId);
+        if (!serverResult.success) {
+          return {
+            success: true,
+            data: {
+              isActive: false,
+              message: "This server is not registered. Register at https://commit.protocol/ to get started.",
+            },
+          };
+        }
+        return {
+          success: true,
+          data: {
+            isActive: true,
+            balance: serverResult.data?.data?.availableBalance || "0",
+            message: "This server is registered and active!",
+          },
+        };
+      }
+
+      case "commitment_status": {
+        const commitment = await this.getCommitment(params.commitId);
+        if (!commitment.success) return commitment;
+        
+        const data = commitment.data?.data;
+        return {
+          success: true,
+          data: {
+            commitId: params.commitId,
+            state: data?.state || "Unknown",
+            amount: data?.amount || "0",
+            deadline: data?.deadline,
+            contributor: data?.contributor,
+            summary: `Commitment ${params.commitId}: ${data?.state} - ${data?.amount} MNEE`,
+          },
+        };
+      }
+
+      case "time_left": {
+        const commitment = await this.getCommitment(params.commitId);
+        if (!commitment.success) return commitment;
+        
+        const deadline = commitment.data?.data?.deadline;
+        if (!deadline) {
+          return { success: false, error: "Could not find deadline" };
+        }
+        
+        const now = Math.floor(Date.now() / 1000);
+        const deadlineTs = typeof deadline === 'number' ? deadline : parseInt(deadline);
+        const diff = deadlineTs - now;
+        
+        if (diff <= 0) {
+          return {
+            success: true,
+            data: { timeLeft: "Expired", expired: true },
+          };
+        }
+        
+        const days = Math.floor(diff / 86400);
+        const hours = Math.floor((diff % 86400) / 3600);
+        const minutes = Math.floor((diff % 3600) / 60);
+        
+        return {
+          success: true,
+          data: {
+            timeLeft: `${days}d ${hours}h ${minutes}m`,
+            expired: false,
+            deadlineTimestamp: deadlineTs,
+          },
+        };
+      }
+
+      // ==================== Wallet Tools ====================
+      
       case "link_wallet":
         return await this.linkWallet(
           discordId,
@@ -270,14 +355,13 @@ class ServerClient {
       case "get_my_wallet":
         return await this.getWalletByDiscordId(discordId);
 
-      // Server registration & balance
-      case "register_server":
-        return await this.registerServer(guildId, discordId);
-
+      // ==================== Server Balance ====================
+      
       case "get_server_balance":
         return await this.getServerBalance(guildId);
 
-      // Commitments
+      // ==================== Commitments ====================
+      
       case "create_commitment": {
         // Resolve contributor username to wallet
         const contributorResult = await this.getWalletByUsername(
@@ -319,7 +403,8 @@ class ServerClient {
       case "my_commitments":
         return await this.myCommitments(discordId);
 
-      // Disputes
+      // ==================== Disputes ====================
+      
       case "open_dispute":
         return await this.openDispute({
           guildId,

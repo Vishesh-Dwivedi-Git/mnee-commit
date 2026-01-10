@@ -106,7 +106,7 @@ serverRouter.post('/:guildId/deposit', async (req: Request, res: Response) => {
             data: {
                 txHash,
                 amount: input.amount,
-                newBalance: balance.availableBalance,
+                newBalance: balance?.availableBalance || '0',
                 message: 'Deposit successful',
             },
         } satisfies ApiResponse<DepositResponse>);
@@ -190,10 +190,11 @@ serverRouter.get('/:guildId', async (req: Request, res: Response) => {
 
         const serverInfo = await getServerInfo(guildId);
 
-        if (!serverInfo.isActive && serverInfo.registeredAt === 0) {
+        // Handle null (contract error) or unregistered server
+        if (!serverInfo || (!serverInfo.isActive && serverInfo.registeredAt === 0)) {
             res.status(404).json({
                 success: false,
-                error: 'Server not found',
+                error: 'Server not found or contract unavailable',
             } satisfies ApiResponse<never>);
             return;
         }

@@ -1,53 +1,66 @@
 "use client";
 
-import React from "react";
+import React, { Suspense } from "react";
 import { motion } from "framer-motion";
-import { Wallet, TrendingUp, Award, Clock, CheckCircle, FileText } from "lucide-react";
+import { useAccount } from "wagmi";
+import { Wallet, TrendingUp, Clock, CheckCircle, FileText, Loader2, AlertCircle } from "lucide-react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { formatMNEE, formatTimeRemaining } from "@/lib/utils";
+import { useContributorCommitments, useMneeBalance } from "@/hooks/useContract";
+import { STATE_LABELS, CommitmentState } from "@/lib/contracts";
 
-// Mock data
-const mockWork = [
-  {
-    id: "0x1a2b3c4d",
-    server: "Web3 Builders",
-    title: "Smart Contract Audit",
-    amount: "5000000000000000000000",
-    deadline: Math.floor(Date.now() / 1000) + 86400 * 3,
-    state: "FUNDED",
-    progress: 65,
-  },
-  {
-    id: "0x2b3c4d5e",
-    server: "DeFi Protocol",
-    title: "Frontend Integration",
-    amount: "2000000000000000000000",
-    deadline: Math.floor(Date.now() / 1000) + 86400 * 1,
-    state: "FUNDED",
-    progress: 90,
-  },
-  {
-    id: "0x3c4d5e6f",
-    server: "NFT Marketplace",
-    title: "API Development",
-    amount: "3500000000000000000000",
-    deadline: Math.floor(Date.now() / 1000) - 86400,
-    state: "SUBMITTED",
-    progress: 100,
-  },
-];
+// Loading fallback
+function Loading() {
+  return (
+    <div className="min-h-screen bg-[#020202]">
+      <Sidebar type="contributor" />
+      <main className="ml-64 p-10 flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-[#c9a227]" />
+      </main>
+    </div>
+  );
+}
 
-const stats = [
-  { label: "Earned", value: "45,250", icon: Wallet },
-  { label: "Pending", value: "10,500", icon: Clock },
-  { label: "Reputation", value: "94", icon: Award },
-  { label: "Success", value: "98%", icon: TrendingUp },
-];
+function ContributorDashboardInner() {
+  const { address, isConnected } = useAccount();
+  const { commitments, isLoading, error } = useContributorCommitments();
+  const { data: mneeBalance } = useMneeBalance();
 
-export default function ContributorDashboard() {
+  // Calculate stats from real data
+  const activeWork = commitments.filter(c => c.state === CommitmentState.FUNDED);
+  const submittedWork = commitments.filter(c => c.state === CommitmentState.SUBMITTED);
+  const completedWork = commitments.filter(c => 
+    c.state === CommitmentState.SETTLED || c.state === CommitmentState.APPROVED
+  );
+  
+  const pendingAmount = activeWork.reduce((sum, c) => sum + c.amount, 0n);
+  const earnedAmount = completedWork.reduce((sum, c) => sum + c.amount, 0n);
+
+  // Show connect prompt if no wallet
+  if (!isConnected || !address) {
+    return (
+      <div className="min-h-screen bg-[#020202]">
+        <Sidebar type="contributor" />
+        <main className="ml-64 p-10">
+          <Card variant="warm" padding="lg" className="max-w-md mx-auto mt-20">
+            <CardContent className="text-center">
+              <Wallet className="w-12 h-12 text-[#c9a227] mx-auto mb-4" />
+              <h2 className="text-xl font-[family-name:var(--font-display)] text-[#e8e8e8] mb-2">
+                Connect Wallet
+              </h2>
+              <p className="text-[#888888] text-sm">
+                Connect your wallet to view your commitments
+              </p>
+            </CardContent>
+          </Card>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#020202]">
       <Sidebar type="contributor" />
@@ -60,10 +73,10 @@ export default function ContributorDashboard() {
           className="mb-12"
         >
           <h1 className="text-3xl font-[family-name:var(--font-display)] font-normal text-[#e8e8e8] mb-2">
-            Dashboard
+            My Work
           </h1>
-          <p className="text-[#666666] text-sm">
-            Your work and reputation
+          <p className="text-[#666666] text-sm font-mono">
+            {address?.slice(0, 10)}...{address?.slice(-8)}
           </p>
         </motion.div>
 
@@ -74,172 +87,196 @@ export default function ContributorDashboard() {
           transition={{ delay: 0.1 }}
           className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-10"
         >
-          {stats.map((stat, index) => (
-            <motion.div
-              key={stat.label}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.1 + index * 0.05 }}
-            >
-              <Card variant="minimal" hover="border" padding="md">
-                <CardContent className="flex items-center gap-4">
-                  <stat.icon className="w-5 h-5 text-[#444444]" />
-                  <div>
-                    <p className="text-2xl font-[family-name:var(--font-display)] text-[#e8e8e8]">
-                      {stat.value}
-                    </p>
-                    <p className="text-xs text-[#666666] uppercase tracking-wider">
-                      {stat.label}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          ))}
-        </motion.div>
+          <Card variant="minimal" hover="border" padding="md">
+            <CardContent className="flex items-center gap-4">
+              <Wallet className="w-5 h-5 text-[#444444]" />
+              <div>
+                <p className="text-2xl font-[family-name:var(--font-display)] text-[#e8e8e8]">
+                  {formatMNEE(earnedAmount)}
+                </p>
+                <p className="text-xs text-[#666666] uppercase tracking-wider">
+                  Earned
+                </p>
+              </div>
+            </CardContent>
+          </Card>
 
-        {/* Active Work */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-        >
-          <Card variant="glass">
-            <CardHeader className="flex flex-row items-center justify-between p-6">
-              <CardTitle>Active Work</CardTitle>
-              <Button variant="ghost" size="sm">
-                <FileText className="w-4 h-4" />
-                All
-              </Button>
-            </CardHeader>
-            <CardContent className="p-6 pt-0">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {mockWork.map((work, index) => (
-                  <motion.div
-                    key={work.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.3 + index * 0.1 }}
-                  >
-                    <Card variant="elevated" hover="glow" padding="md" className="h-full group">
-                      <CardContent>
-                        {/* Header */}
-                        <div className="flex items-center justify-between mb-4">
-                          <span className="text-[10px] text-[#444444] font-mono uppercase tracking-wider">
-                            {work.id}
-                          </span>
-                          <StatusBadge status={work.state} />
-                        </div>
+          <Card variant="minimal" hover="border" padding="md">
+            <CardContent className="flex items-center gap-4">
+              <Clock className="w-5 h-5 text-[#444444]" />
+              <div>
+                <p className="text-2xl font-[family-name:var(--font-display)] text-[#e8e8e8]">
+                  {formatMNEE(pendingAmount)}
+                </p>
+                <p className="text-xs text-[#666666] uppercase tracking-wider">
+                  Pending
+                </p>
+              </div>
+            </CardContent>
+          </Card>
 
-                        {/* Title */}
-                        <h3 className="text-lg font-[family-name:var(--font-display)] text-[#e8e8e8] mb-1 group-hover:text-white transition-colors">
-                          {work.title}
-                        </h3>
-                        <p className="text-xs text-[#666666] mb-6">{work.server}</p>
+          <Card variant="minimal" hover="border" padding="md">
+            <CardContent className="flex items-center gap-4">
+              <FileText className="w-5 h-5 text-[#444444]" />
+              <div>
+                <p className="text-2xl font-[family-name:var(--font-display)] text-[#e8e8e8]">
+                  {activeWork.length}
+                </p>
+                <p className="text-xs text-[#666666] uppercase tracking-wider">
+                  Active
+                </p>
+              </div>
+            </CardContent>
+          </Card>
 
-                        {/* Progress */}
-                        <div className="mb-6">
-                          <div className="flex justify-between text-xs mb-2">
-                            <span className="text-[#444444]">progress</span>
-                            <span className="text-[#888888]">{work.progress}%</span>
-                          </div>
-                          <div className="h-[2px] bg-[#1a1a1a] overflow-hidden">
-                            <motion.div
-                              initial={{ width: 0 }}
-                              animate={{ width: `${work.progress}%` }}
-                              transition={{ duration: 0.8, ease: [0.25, 0.1, 0.25, 1] }}
-                              className="h-full bg-gradient-to-r from-[#666666] to-[#888888]"
-                            />
-                          </div>
-                        </div>
-
-                        {/* Footer */}
-                        <div className="flex items-center justify-between pt-4 border-t border-[rgba(255,255,255,0.04)]">
-                          <div>
-                            <p className="text-lg font-[family-name:var(--font-display)] text-[#e8e8e8]">
-                              {formatMNEE(work.amount)}
-                            </p>
-                            <p className="text-[10px] text-[#c9a227] uppercase tracking-wider">MNEE</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-xs text-[#666666]">{formatTimeRemaining(work.deadline)}</p>
-                          </div>
-                        </div>
-
-                        {/* Submit Button */}
-                        {work.state === "FUNDED" && (
-                          <Button variant="gold" className="w-full mt-4" size="sm">
-                            <CheckCircle className="w-4 h-4" />
-                            Submit
-                          </Button>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                ))}
+          <Card variant="minimal" hover="border" padding="md">
+            <CardContent className="flex items-center gap-4">
+              <TrendingUp className="w-5 h-5 text-[#444444]" />
+              <div>
+                <p className="text-2xl font-[family-name:var(--font-display)] text-[#e8e8e8]">
+                  {completedWork.length}
+                </p>
+                <p className="text-xs text-[#666666] uppercase tracking-wider">
+                  Completed
+                </p>
               </div>
             </CardContent>
           </Card>
         </motion.div>
 
-        {/* Reputation Section */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-          className="mt-10"
-        >
-          <Card variant="warm">
-            <CardHeader className="p-6">
-              <CardTitle className="flex items-center gap-2">
-                <Award className="w-5 h-5 text-[#c9a227]" />
-                Reputation
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-6 pt-0">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                {/* Score */}
-                <div className="flex flex-col items-center justify-center">
-                  <motion.div
-                    initial={{ scale: 0.8, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    transition={{ duration: 0.6, delay: 0.5 }}
-                    className="text-7xl font-[family-name:var(--font-display)] text-[#e8e8e8] mb-2"
-                  >
-                    94
-                  </motion.div>
-                  <span className="text-xs text-[#666666] uppercase tracking-[0.2em]">of 100</span>
-                </div>
+        {/* Loading State */}
+        {isLoading && (
+          <div className="flex items-center justify-center h-64">
+            <Loader2 className="w-8 h-8 animate-spin text-[#c9a227]" />
+          </div>
+        )}
 
-                {/* Breakdown */}
-                <div className="col-span-2 space-y-4">
-                  {[
-                    { label: "Completion", value: 98 },
-                    { label: "Timeliness", value: 92 },
-                    { label: "Quality", value: 95 },
-                    { label: "Communication", value: 90 },
-                  ].map((metric, i) => (
-                    <div key={metric.label}>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span className="text-[#666666]">{metric.label}</span>
-                        <span className="text-[#888888]">{metric.value}%</span>
-                      </div>
-                      <div className="h-[2px] bg-[#1a1a1a] overflow-hidden">
-                        <motion.div
-                          initial={{ width: 0 }}
-                          animate={{ width: `${metric.value}%` }}
-                          transition={{ duration: 0.8, delay: 0.6 + i * 0.1, ease: [0.25, 0.1, 0.25, 1] }}
-                          className="h-full bg-[#c9a227]"
-                        />
-                      </div>
-                    </div>
+        {/* Error State */}
+        {error && (
+          <Card variant="minimal" padding="lg">
+            <CardContent className="flex items-center gap-3 text-red-400">
+              <AlertCircle className="w-5 h-5" />
+              <p>Failed to load commitments: {error.message}</p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Empty State */}
+        {!isLoading && !error && commitments.length === 0 && (
+          <Card variant="minimal" padding="lg">
+            <CardContent className="text-center py-12">
+              <FileText className="w-12 h-12 text-[#333333] mx-auto mb-4" />
+              <h3 className="text-lg font-[family-name:var(--font-display)] text-[#888888] mb-2">
+                No Work Assigned
+              </h3>
+              <p className="text-sm text-[#666666]">
+                You don't have any work commitments assigned to your wallet yet.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Commitments List */}
+        {!isLoading && !error && commitments.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+          >
+            <Card variant="glass">
+              <CardHeader className="flex flex-row items-center justify-between p-6">
+                <CardTitle>My Commitments</CardTitle>
+                <span className="text-sm text-[#666666]">{commitments.length} total</span>
+              </CardHeader>
+              <CardContent className="p-6 pt-0">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {commitments.map((commitment, index) => (
+                    <motion.div
+                      key={commitment.id.toString()}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.3 + index * 0.05 }}
+                    >
+                      <Card variant="elevated" hover="glow" padding="md" className="h-full group">
+                        <CardContent>
+                          {/* Header */}
+                          <div className="flex items-center justify-between mb-4">
+                            <span className="text-[10px] text-[#444444] font-mono uppercase tracking-wider">
+                              #{commitment.id.toString()}
+                            </span>
+                            <StatusBadge status={STATE_LABELS[commitment.state]} />
+                          </div>
+
+                          {/* Server ID */}
+                          <p className="text-xs text-[#666666] mb-2">
+                            Server: {commitment.guildId.toString()}
+                          </p>
+
+                          {/* Amount & Deadline */}
+                          <div className="flex items-center justify-between pt-4 border-t border-[rgba(255,255,255,0.04)]">
+                            <div>
+                              <p className="text-lg font-[family-name:var(--font-display)] text-[#e8e8e8]">
+                                {formatMNEE(commitment.amount)}
+                              </p>
+                              <p className="text-[10px] text-[#c9a227] uppercase tracking-wider">MNEE</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-xs text-[#666666]">
+                                {formatTimeRemaining(Number(commitment.deadline))}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Action Button */}
+                          {commitment.state === CommitmentState.FUNDED && (
+                            <Button variant="gold" className="w-full mt-4" size="sm">
+                              <CheckCircle className="w-4 h-4" />
+                              Submit Work
+                            </Button>
+                          )}
+
+                          {commitment.state === CommitmentState.SUBMITTED && (
+                            <div className="mt-4 text-center text-xs text-[#666666]">
+                              Awaiting approval...
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    </motion.div>
                   ))}
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+
+        {/* MNEE Balance Card */}
+        {mneeBalance && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.4 }}
+            className="mt-8"
+          >
+            <Card variant="minimal" padding="md">
+              <CardContent className="flex items-center justify-between">
+                <span className="text-sm text-[#666666]">Wallet MNEE Balance</span>
+                <span className="text-lg font-[family-name:var(--font-display)] text-[#c9a227]">
+                  {formatMNEE(mneeBalance)} MNEE
+                </span>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
       </main>
     </div>
+  );
+}
+
+export default function ContributorDashboard() {
+  return (
+    <Suspense fallback={<Loading />}>
+      <ContributorDashboardInner />
+    </Suspense>
   );
 }

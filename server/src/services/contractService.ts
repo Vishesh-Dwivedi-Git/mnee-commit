@@ -189,28 +189,38 @@ export async function withdrawFromServer(guildId: string, to: string, amount: st
   return receipt.hash;
 }
 
-export async function getServerInfo(guildId: string): Promise<ServerData> {
-  const c = getContractOrThrow();
-  const result = await c.servers(guildId);
-  return {
-    guildId: result[0].toString(),
-    adminDiscordId: result[1].toString(),
-    isActive: result[2],
-    registeredAt: Number(result[3]),
-    totalDeposited: result[4].toString(),
-    totalSpent: result[5].toString(),
-    availableBalance: result[6].toString(),
-  };
+export async function getServerInfo(guildId: string): Promise<ServerData | null> {
+  try {
+    const c = getContractOrThrow();
+    const result = await c.servers(guildId);
+    return {
+      guildId: result[0].toString(),
+      adminDiscordId: result[1].toString(),
+      isActive: result[2],
+      registeredAt: Number(result[3]),
+      totalDeposited: result[4].toString(),
+      totalSpent: result[5].toString(),
+      availableBalance: result[6].toString(),
+    };
+  } catch (error) {
+    console.error(`[Contract] Error reading server ${guildId}:`, error);
+    return null;
+  }
 }
 
-export async function getServerBalance(guildId: string): Promise<ServerBalance> {
-  const c = getContractOrThrow();
-  const result = await c.getServerBalance(guildId);
-  return {
-    totalDeposited: result[0].toString(),
-    totalSpent: result[1].toString(),
-    availableBalance: result[2].toString(),
-  };
+export async function getServerBalance(guildId: string): Promise<ServerBalance | null> {
+  try {
+    const c = getContractOrThrow();
+    const result = await c.getServerBalance(guildId);
+    return {
+      totalDeposited: result[0].toString(),
+      totalSpent: result[1].toString(),
+      availableBalance: result[2].toString(),
+    };
+  } catch (error) {
+    console.error(`[Contract] Error reading balance for ${guildId}:`, error);
+    return null;
+  }
 }
 
 // ============================================================================
@@ -276,9 +286,14 @@ export async function getCommitment(commitId: number): Promise<CommitmentData> {
 }
 
 export async function getCommitmentCount(): Promise<number> {
-  const c = getContractOrThrow();
-  const count = await c.commitmentCount();
-  return Number(count);
+  try {
+    const c = getContractOrThrow();
+    const count = await c.commitmentCount();
+    return Number(count);
+  } catch (error) {
+    console.error('[Contract] Error reading commitment count:', error);
+    return 0;
+  }
 }
 
 export async function getCommitmentServerId(commitId: number): Promise<string> {

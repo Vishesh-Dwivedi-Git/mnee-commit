@@ -112,51 +112,6 @@ userRouter.post('/', async (req: Request, res: Response) => {
 });
 
 /**
- * GET /user/:username
- * Get wallet address by username
- */
-userRouter.get('/:username', async (req: Request, res: Response) => {
-    try {
-        const { username } = req.params;
-
-        if (!username) {
-            res.status(400).json({
-                success: false,
-                error: 'username is required',
-            } satisfies ApiResponse<never>);
-            return;
-        }
-
-        const user = await User.findOne({ username: username.toLowerCase() });
-
-        if (!user) {
-            res.status(404).json({
-                success: false,
-                error: 'User not found',
-            } satisfies ApiResponse<never>);
-            return;
-        }
-
-        res.status(200).json({
-            success: true,
-            data: {
-                username: user.username,
-                walletAddress: user.walletAddress,
-                discordId: user.discordId,
-                createdAt: user.createdAt,
-                updatedAt: user.updatedAt,
-            },
-        } satisfies ApiResponse<UserData>);
-    } catch (error) {
-        console.error('Error getting user:', error);
-        res.status(500).json({
-            success: false,
-            error: error instanceof Error ? error.message : 'Failed to get user',
-        } satisfies ApiResponse<never>);
-    }
-});
-
-/**
  * GET /user/discord/:discordId
  * Get wallet by Discord user ID
  */
@@ -239,6 +194,51 @@ userRouter.get('/wallet/:address', async (req: Request, res: Response) => {
         } satisfies ApiResponse<UserData>);
     } catch (error) {
         console.error('Error getting user by wallet:', error);
+        res.status(500).json({
+            success: false,
+            error: error instanceof Error ? error.message : 'Failed to get user',
+        } satisfies ApiResponse<never>);
+    }
+});
+
+/**
+ * GET /user/:username
+ * Get wallet address by username (MUST be after /discord and /wallet routes!)
+ */
+userRouter.get('/:username', async (req: Request, res: Response) => {
+    try {
+        const { username } = req.params;
+
+        if (!username) {
+            res.status(400).json({
+                success: false,
+                error: 'username is required',
+            } satisfies ApiResponse<never>);
+            return;
+        }
+
+        const user = await User.findOne({ username: username.toLowerCase() });
+
+        if (!user) {
+            res.status(404).json({
+                success: false,
+                error: 'User not found',
+            } satisfies ApiResponse<never>);
+            return;
+        }
+
+        res.status(200).json({
+            success: true,
+            data: {
+                username: user.username,
+                walletAddress: user.walletAddress,
+                discordId: user.discordId,
+                createdAt: user.createdAt,
+                updatedAt: user.updatedAt,
+            },
+        } satisfies ApiResponse<UserData>);
+    } catch (error) {
+        console.error('Error getting user:', error);
         res.status(500).json({
             success: false,
             error: error instanceof Error ? error.message : 'Failed to get user',

@@ -6,6 +6,7 @@ import {
   useWriteContract,
   useReadContract,
   useWaitForTransactionReceipt,
+  usePublicClient,
 } from 'wagmi';
 import {
   COMMIT_CONTRACT_ADDRESS,
@@ -31,6 +32,7 @@ interface UseRegisterServerResult {
  */
 export function useRegisterServer(): UseRegisterServerResult {
   const { address } = useAccount();
+  const publicClient = usePublicClient();
   const [step, setStep] = useState<TransactionStep>('idle');
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -57,6 +59,12 @@ export function useRegisterServer(): UseRegisterServerResult {
       return;
     }
 
+    if (!publicClient) {
+      setError('Unable to connect to network');
+      setStep('error');
+      return;
+    }
+
     try {
       setError(null);
       
@@ -69,8 +77,9 @@ export function useRegisterServer(): UseRegisterServerResult {
         args: [COMMIT_CONTRACT_ADDRESS, REGISTRATION_FEE],
       });
 
+      // Wait for approval to be mined
       setStep('confirming-approval');
-      // Wait for approval confirmation is handled by wagmi internally
+      await publicClient.waitForTransactionReceipt({ hash: approvalTx });
       
       // Step 2: Register server
       setStep('registering');
@@ -81,17 +90,18 @@ export function useRegisterServer(): UseRegisterServerResult {
         args: [BigInt(guildId), BigInt(adminDiscordId)],
       });
 
-      setTxHash(registerTx);
+      // Wait for registration to be mined
       setStep('confirming-registration');
+      await publicClient.waitForTransactionReceipt({ hash: registerTx });
       
-      // Success will be set after tx confirmation in the component
+      setTxHash(registerTx);
       setStep('success');
     } catch (err) {
       console.error('Registration error:', err);
       setError(err instanceof Error ? err.message : 'Transaction failed');
       setStep('error');
     }
-  }, [address, approveToken, callRegister]);
+  }, [address, publicClient, approveToken, callRegister]);
 
   return { registerServer, step, error, txHash, reset };
 }
@@ -110,6 +120,7 @@ interface UseDepositToServerResult {
  */
 export function useDepositToServer(): UseDepositToServerResult {
   const { address } = useAccount();
+  const publicClient = usePublicClient();
   const [step, setStep] = useState<TransactionStep>('idle');
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -136,19 +147,27 @@ export function useDepositToServer(): UseDepositToServerResult {
       return;
     }
 
+    if (!publicClient) {
+      setError('Unable to connect to network');
+      setStep('error');
+      return;
+    }
+
     try {
       setError(null);
       
       // Step 1: Approve MNEE spending
       setStep('approving');
-      await approveToken({
+      const approveTx = await approveToken({
         address: MNEE_TOKEN_ADDRESS,
         abi: ERC20_ABI,
         functionName: 'approve',
         args: [COMMIT_CONTRACT_ADDRESS, amount],
       });
 
+      // Wait for approval to be mined
       setStep('confirming-approval');
+      await publicClient.waitForTransactionReceipt({ hash: approveTx });
       
       // Step 2: Deposit to server
       setStep('depositing');
@@ -159,15 +178,18 @@ export function useDepositToServer(): UseDepositToServerResult {
         args: [BigInt(guildId), amount],
       });
 
-      setTxHash(depositTx);
+      // Wait for deposit to be mined
       setStep('confirming-deposit');
+      await publicClient.waitForTransactionReceipt({ hash: depositTx });
+      
+      setTxHash(depositTx);
       setStep('success');
     } catch (err) {
       console.error('Deposit error:', err);
       setError(err instanceof Error ? err.message : 'Transaction failed');
       setStep('error');
     }
-  }, [address, approveToken, callDeposit]);
+  }, [address, publicClient, approveToken, callDeposit]);
 
   return { deposit, step, error, txHash, reset };
 }

@@ -2,88 +2,121 @@
  * MCP Server for MNEE Commit Protocol
  * Exposes Discord server-specific tools for Gemini API
  *
- * Updated for Discord server integration with prepaid balance system
+ * IMPORTANT: guildId is NEVER a tool parameter - it's injected from Discord context
+ * This prevents Gemini from hallucinating values
  */
 
 export const MCP_TOOLS = [
   // ============================================================================
-  // Server Registration & Balance
+  // Quick Query Tools (Micro Features)
   // ============================================================================
   {
-    name: "register_server",
-    description:
-      "Register a Discord server to use Commit Protocol. Requires 15 MNEE registration fee. Each server gets a prepaid balance for creating commitments.",
+    name: "help",
+    description: "Show available commands and what the bot can help with",
     parameters: {
       type: "object",
-      properties: {
-        guildId: {
-          type: "string",
-          description: "Discord guild/server ID",
-        },
-        adminDiscordId: {
-          type: "string",
-          description: "Discord user ID of the server admin",
-        },
-      },
-      required: ["guildId", "adminDiscordId"],
+      properties: {},
+      required: [],
     },
   },
   {
-    name: "deposit_balance",
-    description:
-      "Deposit MNEE tokens to a Discord server's prepaid balance. The server balance is used to fund commitments.",
+    name: "who_is",
+    description: "Look up a Discord user's linked Ethereum wallet address by their username",
     parameters: {
       type: "object",
       properties: {
-        guildId: {
+        username: {
           type: "string",
-          description: "Discord guild/server ID",
-        },
-        amount: {
-          type: "string",
-          description:
-            "Amount of MNEE to deposit (in wei, e.g., '1000000000000000000' for 1 MNEE)",
+          description: "Discord username to look up (without @)",
         },
       },
-      required: ["guildId", "amount"],
+      required: ["username"],
     },
   },
+  {
+    name: "am_i_registered",
+    description: "Check if the calling user has linked their Ethereum wallet to their Discord account",
+    parameters: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "is_server_active",
+    description: "Check if this Discord server is registered with Commit Protocol and can create commitments",
+    parameters: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "commitment_status",
+    description: "Get quick status summary of a commitment (state, amount, deadline)",
+    parameters: {
+      type: "object",
+      properties: {
+        commitId: {
+          type: "string",
+          description: "The commitment ID to check",
+        },
+      },
+      required: ["commitId"],
+    },
+  },
+  {
+    name: "time_left",
+    description: "Check how much time is left until a commitment's deadline",
+    parameters: {
+      type: "object",
+      properties: {
+        commitId: {
+          type: "string",
+          description: "The commitment ID to check deadline for",
+        },
+      },
+      required: ["commitId"],
+    },
+  },
+
+  // ============================================================================
+  // Wallet Management
+  // ============================================================================
+  {
+    name: "link_wallet",
+    description: "Link an Ethereum wallet address to the user's Discord account. Required before creating or receiving commitments.",
+    parameters: {
+      type: "object",
+      properties: {
+        walletAddress: {
+          type: "string",
+          description: "Ethereum wallet address (0x followed by 40 hex characters)",
+        },
+      },
+      required: ["walletAddress"],
+    },
+  },
+  {
+    name: "get_my_wallet",
+    description: "Get the caller's linked Ethereum wallet address",
+    parameters: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
+
+  // ============================================================================
+  // Server Balance (Read Only - deposits via frontend)
+  // ============================================================================
   {
     name: "get_server_balance",
-    description:
-      "Get the current MNEE balance for a Discord server, including total deposited, total spent, and available balance.",
+    description: "Get the current MNEE balance for this Discord server, including total deposited, spent, and available.",
     parameters: {
       type: "object",
-      properties: {
-        guildId: {
-          type: "string",
-          description: "Discord guild/server ID",
-        },
-      },
-      required: ["guildId"],
-    },
-  },
-  {
-    name: "withdraw_balance",
-    description:
-      "Withdraw unused MNEE from a Discord server's balance. Only callable by server admin via bot.",
-    parameters: {
-      type: "object",
-      properties: {
-        guildId: {
-          type: "string",
-          description: "Discord guild/server ID",
-        },
-        toAddress: {
-          type: "string",
-          description: "Ethereum address to withdraw MNEE to",
-        },
-        amount: {
-          type: "string",
-          description: "Amount of MNEE to withdraw (in wei)",
-        },
-      },
-      required: ["guildId", "toAddress", "amount"],
+      properties: {},
+      required: [],
     },
   },
 
@@ -92,129 +125,88 @@ export const MCP_TOOLS = [
   // ============================================================================
   {
     name: "create_commitment",
-    description:
-      "Create a new commitment from a Discord server's prepaid balance. The amount is deducted from the server's available balance. User must have 'commit-creator' role.",
+    description: "Create a new work commitment. The amount is deducted from the server's prepaid MNEE balance. The contributor must have linked their wallet.",
     parameters: {
       type: "object",
       properties: {
-        guildId: {
+        contributorUsername: {
           type: "string",
-          description: "Discord guild/server ID",
+          description: "Discord username of the person who will do the work (without @)",
         },
-        contributorAddress: {
-          type: "string",
-          description:
-            "Ethereum address of the contributor who will receive payment",
-        },
-        amount: {
-          type: "string",
-          description: "Amount of MNEE to pay (in wei)",
-        },
-        deadlineTimestamp: {
+        amountMNEE: {
           type: "number",
-          description: "Unix timestamp when delivery must be completed by",
+          description: "Payment amount in MNEE (e.g., 500 for 500 MNEE)",
         },
-        disputeWindowSeconds: {
+        taskDescription: {
+          type: "string",
+          description: "Description of the work to be done",
+        },
+        deadlineDays: {
           type: "number",
-          description:
-            "Number of seconds after delivery during which disputes can be opened",
-        },
-        specCid: {
-          type: "string",
-          description: "IPFS CID containing the work specification",
-        },
-        discordUserId: {
-          type: "string",
-          description: "Discord user ID of the commitment creator",
+          description: "Number of days from now until the deadline",
         },
       },
-      required: [
-        "guildId",
-        "contributorAddress",
-        "amount",
-        "deadlineTimestamp",
-        "disputeWindowSeconds",
-        "specCid",
-        "discordUserId",
-      ],
+      required: ["contributorUsername", "amountMNEE", "taskDescription", "deadlineDays"],
     },
   },
   {
     name: "submit_work",
-    description:
-      "Submit completed work for a commitment with evidence. Only the contributor can submit work.",
+    description: "Submit completed work for a commitment. Only the assigned contributor can submit.",
     parameters: {
       type: "object",
       properties: {
-        guildId: {
-          type: "string",
-          description: "Discord guild/server ID",
-        },
         commitId: {
           type: "string",
-          description: "The unique ID of the commitment",
+          description: "The commitment ID to submit work for",
         },
-        evidenceCid: {
+        description: {
           type: "string",
-          description: "IPFS CID containing the work evidence/deliverable",
+          description: "Brief description of the completed work",
+        },
+        deliverableUrl: {
+          type: "string",
+          description: "URL to the deliverable (GitHub repo, Google Doc, etc.)",
         },
       },
-      required: ["guildId", "commitId", "evidenceCid"],
+      required: ["commitId", "description", "deliverableUrl"],
     },
   },
   {
     name: "get_commitment",
-    description:
-      "Get detailed information about a specific commitment by its ID",
+    description: "Get detailed information about a specific commitment by its ID",
     parameters: {
       type: "object",
       properties: {
         commitId: {
           type: "string",
-          description: "The unique ID of the commitment to retrieve",
+          description: "The commitment ID to retrieve",
         },
       },
       required: ["commitId"],
     },
   },
   {
-    name: "list_server_commitments",
-    description: "List all commitments for a specific Discord server",
+    name: "list_commitments",
+    description: "List all commitments for this Discord server",
     parameters: {
       type: "object",
       properties: {
-        guildId: {
+        status: {
           type: "string",
-          description: "Discord guild/server ID",
-        },
-        state: {
-          type: "string",
-          enum: [
-            "FUNDED",
-            "SUBMITTED",
-            "DISPUTED",
-            "SETTLED",
-            "REFUNDED",
-            "ALL",
-          ],
-          description: "Filter by commitment state (optional, defaults to ALL)",
+          enum: ["all", "active", "completed", "disputed"],
+          description: "Filter by status (optional, defaults to 'all')",
         },
       },
-      required: ["guildId"],
+      required: [],
     },
   },
   {
-    name: "list_contributor_commitments",
-    description: "List all commitments for a specific contributor address",
+    name: "my_commitments",
+    description: "List all commitments where the caller is the contributor",
     parameters: {
       type: "object",
-      properties: {
-        contributorAddress: {
-          type: "string",
-          description: "Ethereum address of the contributor",
-        },
-      },
-      required: ["contributorAddress"],
+      properties: {},
+      required: [],
     },
   },
 
@@ -223,60 +215,20 @@ export const MCP_TOOLS = [
   // ============================================================================
   {
     name: "open_dispute",
-    description:
-      "Open a dispute for a commitment if the creator is unsatisfied with the work. Requires ETH stake. Must be within dispute window.",
+    description: "Open a dispute for a commitment if unsatisfied with the submitted work. Must be within the dispute window.",
     parameters: {
       type: "object",
       properties: {
-        guildId: {
-          type: "string",
-          description: "Discord guild/server ID",
-        },
         commitId: {
           type: "string",
-          description: "The unique ID of the commitment to dispute",
+          description: "The commitment ID to dispute",
         },
         reason: {
           type: "string",
           description: "Reason for opening the dispute",
         },
       },
-      required: ["guildId", "commitId"],
-    },
-  },
-  {
-    name: "get_dispute",
-    description:
-      "Get detailed information about a dispute for a specific commitment",
-    parameters: {
-      type: "object",
-      properties: {
-        commitId: {
-          type: "string",
-          description:
-            "The unique ID of the commitment to get dispute info for",
-        },
-      },
-      required: ["commitId"],
-    },
-  },
-
-  // ============================================================================
-  // Settlement
-  // ============================================================================
-  {
-    name: "get_pending_settlements",
-    description:
-      "Get a list of commitments that are ready to be settled (past dispute window)",
-    parameters: {
-      type: "object",
-      properties: {
-        guildId: {
-          type: "string",
-          description: "Optional: filter by Discord guild/server ID",
-        },
-      },
-      required: [],
+      required: ["commitId", "reason"],
     },
   },
 ];
@@ -285,59 +237,63 @@ export const MCP_TOOLS = [
  * Get system instruction for Gemini API
  */
 export function getSystemInstruction() {
-  return `You are an AI assistant for the MNEE Commit Protocol Discord Bot. This is a trustless escrow system for work commitments using MNEE tokens on Ethereum.
+  return `You are an AI assistant for the MNEE Commit Protocol Discord Bot. This is a trustless escrow system for work commitments using MNEE tokens.
 
-## Your Role
-Help Discord users manage work commitments through natural language. You interact with the backend API via tool calls.
+## CRITICAL RULES
+1. **NEVER include guildId in tool calls** - it's automatically injected from Discord context
+2. **NEVER make up parameters** - if unsure, ask the user to clarify
+3. **Always use exact parameter names** as defined in the tools
 
-## Key Concepts
-- **Discord Server**: Each server has a prepaid MNEE balance for funding commitments
-- **Registration**: Servers pay 15 MNEE to register (one-time)
-- **Commitments**: Work agreements funded from server balance
-- **Evidence CID**: IPFS hash of specification or deliverable
+## Your Capabilities
 
-## Commands You Handle
-1. **Server Registration** - Register a Discord server (15 MNEE fee)
-2. **Balance Management** - Deposit/withdraw/check MNEE balance
-3. **Create Commitment** - Create work agreement (deducts from balance)
-4. **Submit Work** - Contributor submits deliverable with evidence
-5. **Check Status** - View commitment or server details
-6. **Open Dispute** - Challenge work quality (requires stake)
+### Quick Queries
+- **help** - Show what I can do
+- **who_is** - Look up someone's wallet by username
+- **am_i_registered** - Check if caller has linked wallet
+- **is_server_active** - Check if server is registered
+- **commitment_status** - Quick status of a commitment
+- **time_left** - Time until deadline
 
-## Role Requirements
-- Only users with 'commit-creator' role can create commitments
-- Server admins can deposit/withdraw balance
-- Contributors can submit work for their commitments
+### Wallet
+- **link_wallet** - Link Ethereum wallet (REQUIRED before using protocol)
+- **get_my_wallet** - Show linked wallet
 
-## IMPORTANT RULES
-1. **Always include guildId** - Get from Discord context, never ask user
-2. **Validate addresses** - Ensure ETH addresses are valid (0x + 40 hex chars)
-3. **Convert amounts** - MNEE uses 18 decimals (1 MNEE = 1e18 wei)
-4. **Check balance first** - Before creating commitments, verify server has funds
-5. **Be clear about fees** - 15 MNEE registration, commitment amounts
+### Commitments
+- **create_commitment** - Create work agreement (needs contributor username, amount, description, deadline days)
+- **submit_work** - Submit completed work (needs commit ID, description, URL)
+- **get_commitment** - Get commitment details
+- **list_commitments** - List server commitments
+- **my_commitments** - List caller's commitments
+- **open_dispute** - Challenge work quality
+
+### Balance
+- **get_server_balance** - Check server's MNEE balance
+
+## Important Notes
+- Server registration and deposits are done via the **web dashboard**, not the bot
+- If a server is not registered, direct users to https://commit.protocol/ to register
+- All amounts are in MNEE (e.g., 500 = 500 MNEE)
+- Contributors must link their wallet before they can receive commitments
 
 ## Example Interactions
 
-**User**: "Check our server's balance"
-→ Call get_server_balance with guildId from context
+User: "What can you do?"
+→ Call help (no parameters)
 
-**User**: "Create a commitment for 500 MNEE to 0x123... for building an API, due in 7 days"
-→ Call create_commitment with guildId, contributor address, amount in wei, deadline
+User: "Check my wallet"
+→ Call get_my_wallet (no parameters)
 
-**User**: "What commitments do we have?"
-→ Call list_server_commitments with guildId
+User: "Link my wallet 0x1234..."
+→ Call link_wallet with walletAddress: "0x1234..."
 
-**User**: "I finished the work for commitment #5, here's my evidence: QmABC123"
-→ Call submit_work with guildId, commitId, evidenceCid
+User: "Create a commitment for @alice, 500 MNEE, build an API, 7 days"
+→ Call create_commitment with contributorUsername: "alice", amountMNEE: 500, taskDescription: "build an API", deadlineDays: 7
 
-## Amount Formatting
-When displaying amounts to users:
-- Convert from wei: divide by 1e18
-- Show as "500 MNEE" not "500000000000000000000 wei"
+User: "What's the status of commitment 5?"
+→ Call commitment_status with commitId: "5"
 
-When calling API:
-- Convert to wei: multiply by 1e18
-- Example: 500 MNEE → "500000000000000000000"
+User: "How much time left on commitment 3?"
+→ Call time_left with commitId: "3"
 
 Always be helpful and guide users through the process!`;
 }
