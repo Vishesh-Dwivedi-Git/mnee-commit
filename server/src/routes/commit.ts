@@ -1,7 +1,7 @@
 /**
- * Commitment Routes
- * POST /commit/create               - Create commitment (deducts balance)
- * POST /commit/:id/submit          - Submit work evidence
+ * Commitment Routes - Updated for Natural Language
+ * POST /commit/create               - Create commitment (accepts task description, handles IPFS)
+ * POST /commit/:id/submit          - Submit work (accepts description + URL, handles IPFS)
  * GET  /commit/:id                  - Get commitment details
  * GET  /commit/server/:guildId     - List by server
  * GET  /commit/contributor/:address - List by contributor
@@ -10,31 +10,37 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
 import {
-  createCommitment,
-  submitWork,
+  createCommitment as contractCreateCommitment,
+  submitWork as contractSubmitWork,
   getCommitment,
   getCommitmentsByServer,
   getCommitmentsByContributor,
 } from '../services/contractService.js';
+import { uploadJSON, isIpfsConfigured } from '../services/ipfsService.js';
 import type {
   ApiResponse,
-  CreateCommitmentRequest,
   CreateCommitmentResponse,
-  SubmitWorkRequest,
   SubmitWorkResponse,
   CommitmentData,
 } from '../types/index.js';
 
 export const commitRouter = Router();
 
+// MNEE Token address on mainnet
+const MNEE_TOKEN = '0x8ccedbAe4916b79da7F3F612EfB2EB93A2bFD6cF';
+
+// Default dispute window: 3 days
+const DEFAULT_DISPUTE_WINDOW = 3 * 24 * 60 * 60;
+
+
 /**
  * GET /commit/server/:guildId
  * List commitments by server
- * NOTE: This route must be defined BEFORE /:id to avoid conflict
  */
 commitRouter.get('/server/:guildId', async (req: Request, res: Response) => {
   try {
     const { guildId } = req.params;
+    const { status } = req.query;
 
     if (!guildId) {
       res.status(400).json({
@@ -46,14 +52,29 @@ commitRouter.get('/server/:guildId', async (req: Request, res: Response) => {
 
     const commitments = await getCommitmentsByServer(guildId);
 
+    // Filter by status if provided
+    let filtered = commitments;
+    if (status && status !== 'all') {
+      const statusMap: Record<string, number[]> = {
+        active: [0, 1], // Created, Submitted
+        completed: [3], // Settled
+        disputed: [2], // Disputed
+        refunded: [4], // Refunded
+      };
+      const allowedStates = statusMap[status as string] || [];
+      if (allowedStates.length > 0) {
+        filtered = commitments.filter(c => allowedStates.includes(c.state));
+      }
+    }
+
     res.status(200).json({
       success: true,
       data: {
         guildId,
-        count: commitments.length,
-        commitments,
+        count: filtered.length,
+        commitments: filtered,
       },
-    } satisfies ApiResponse<{ guildId: string; count: number; commitments: Array<CommitmentData & { commitId: number }> }>);
+    });
   } catch (error) {
     console.error('Error listing commitments by server:', error);
     res.status(500).json({
@@ -66,7 +87,6 @@ commitRouter.get('/server/:guildId', async (req: Request, res: Response) => {
 /**
  * GET /commit/contributor/:address
  * List commitments by contributor
- * NOTE: This route must be defined BEFORE /:id to avoid conflict
  */
 commitRouter.get('/contributor/:address', async (req: Request, res: Response) => {
   try {
@@ -89,7 +109,7 @@ commitRouter.get('/contributor/:address', async (req: Request, res: Response) =>
         count: commitments.length,
         commitments,
       },
-    } satisfies ApiResponse<{ address: string; count: number; commitments: Array<CommitmentData & { commitId: number }> }>);
+    });
   } catch (error) {
     console.error('Error listing commitments by contributor:', error);
     res.status(500).json({
@@ -101,77 +121,79 @@ commitRouter.get('/contributor/:address', async (req: Request, res: Response) =>
 
 /**
  * POST /commit/create
- * Create a new commitment (deducts from server balance)
+ * Create a new commitment - accepts natural language, handles IPFS internally
  */
+interface NaturalCreateRequest {
+  guildId: string;
+  contributorUsername?: string;
+  contributorAddress: string;
+  amountMNEE: number;
+  taskDescription: string;
+  deadlineDays: number;
+  creatorDiscordId?: string;
+}
+
 commitRouter.post('/create', async (req: Request, res: Response) => {
   try {
-    const input = req.body as CreateCommitmentRequest;
+    const input = req.body as NaturalCreateRequest;
 
     // Validate required fields
     if (!input.guildId) {
-      res.status(400).json({
-        success: false,
-        error: 'guildId is required',
-      } satisfies ApiResponse<never>);
+      res.status(400).json({ success: false, error: 'guildId is required' });
       return;
     }
 
-    if (!input.contributor) {
-      res.status(400).json({
-        success: false,
-        error: 'contributor address is required',
-      } satisfies ApiResponse<never>);
+    if (!input.contributorAddress) {
+      res.status(400).json({ success: false, error: 'contributorAddress is required' });
       return;
     }
 
-    if (!input.token) {
-      res.status(400).json({
-        success: false,
-        error: 'token address is required',
-      } satisfies ApiResponse<never>);
+    if (!input.amountMNEE || input.amountMNEE <= 0) {
+      res.status(400).json({ success: false, error: 'amountMNEE must be positive' });
       return;
     }
 
-    if (!input.amount) {
-      res.status(400).json({
-        success: false,
-        error: 'amount is required',
-      } satisfies ApiResponse<never>);
+    if (!input.taskDescription) {
+      res.status(400).json({ success: false, error: 'taskDescription is required' });
       return;
     }
 
-    if (!input.deadline || input.deadline <= Math.floor(Date.now() / 1000)) {
-      res.status(400).json({
-        success: false,
-        error: 'deadline must be a future timestamp',
-      } satisfies ApiResponse<never>);
+    if (!input.deadlineDays || input.deadlineDays <= 0) {
+      res.status(400).json({ success: false, error: 'deadlineDays must be positive' });
       return;
     }
 
-    if (!input.disputeWindow || input.disputeWindow <= 0) {
-      res.status(400).json({
-        success: false,
-        error: 'disputeWindow must be a positive number (seconds)',
-      } satisfies ApiResponse<never>);
-      return;
+    // Upload spec to IPFS
+    let specCid = 'mock-cid'; // Fallback if IPFS not configured
+    if (isIpfsConfigured()) {
+      specCid = await uploadJSON({
+        title: `Task for ${input.contributorUsername || input.contributorAddress}`,
+        description: input.taskDescription,
+        amountMNEE: input.amountMNEE,
+        createdAt: Date.now(),
+        creatorDiscordId: input.creatorDiscordId,
+        version: '1.0',
+      }, `spec-${Date.now()}`);
+      console.log(`[Commit] Uploaded spec to IPFS: ${specCid}`);
+    } else {
+      console.warn('[Commit] IPFS not configured, using mock CID');
     }
 
-    if (!input.specCid) {
-      res.status(400).json({
-        success: false,
-        error: 'specCid (IPFS CID for spec) is required',
-      } satisfies ApiResponse<never>);
-      return;
-    }
+    // Convert amount to wei (18 decimals)
+    const amountWei = (BigInt(Math.floor(input.amountMNEE * 1e6)) * BigInt(1e12)).toString();
 
-    const result = await createCommitment(
+    // Calculate deadline timestamp
+    const deadline = Math.floor(Date.now() / 1000) + (input.deadlineDays * 24 * 60 * 60);
+
+    // Create commitment on-chain
+    const result = await contractCreateCommitment(
       input.guildId,
-      input.contributor,
-      input.token,
-      input.amount,
-      input.deadline,
-      input.disputeWindow,
-      input.specCid
+      input.contributorAddress,
+      MNEE_TOKEN,
+      amountWei,
+      deadline,
+      DEFAULT_DISPUTE_WINDOW,
+      specCid
     );
 
     res.status(201).json({
@@ -179,9 +201,10 @@ commitRouter.post('/create', async (req: Request, res: Response) => {
       data: {
         commitId: result.commitId,
         txHash: result.txHash,
+        specCid,
         message: `Commitment #${result.commitId} created successfully`,
       },
-    } satisfies ApiResponse<CreateCommitmentResponse>);
+    } satisfies ApiResponse<CreateCommitmentResponse & { specCid: string }>);
   } catch (error) {
     console.error('Error creating commitment:', error);
     res.status(500).json({
@@ -193,44 +216,61 @@ commitRouter.post('/create', async (req: Request, res: Response) => {
 
 /**
  * POST /commit/:id/submit
- * Submit work evidence for a commitment
+ * Submit work - accepts description + URL, handles IPFS internally
  */
+interface NaturalSubmitRequest {
+  guildId: string;
+  description: string;
+  deliverableUrl?: string;
+  submitterDiscordId?: string;
+}
+
 commitRouter.post('/:id/submit', async (req: Request, res: Response) => {
   try {
     const commitId = parseInt(req.params.id ?? '', 10);
-    const input = req.body as SubmitWorkRequest;
+    const input = req.body as NaturalSubmitRequest;
 
     if (isNaN(commitId)) {
-      res.status(400).json({
-        success: false,
-        error: 'Invalid commitment ID',
-      } satisfies ApiResponse<never>);
+      res.status(400).json({ success: false, error: 'Invalid commitment ID' });
       return;
     }
 
     if (!input.guildId) {
-      res.status(400).json({
-        success: false,
-        error: 'guildId is required',
-      } satisfies ApiResponse<never>);
+      res.status(400).json({ success: false, error: 'guildId is required' });
       return;
     }
 
-    if (!input.evidenceCid) {
-      res.status(400).json({
-        success: false,
-        error: 'evidenceCid (IPFS CID for evidence) is required',
-      } satisfies ApiResponse<never>);
+    if (!input.description) {
+      res.status(400).json({ success: false, error: 'description is required' });
       return;
     }
 
-    const txHash = await submitWork(input.guildId, commitId, input.evidenceCid);
+    // Upload evidence to IPFS
+    let evidenceCid = 'mock-evidence-cid';
+    if (isIpfsConfigured()) {
+      evidenceCid = await uploadJSON({
+        description: input.description,
+        deliverableUrl: input.deliverableUrl,
+        submittedAt: Date.now(),
+        submitterDiscordId: input.submitterDiscordId,
+        version: '1.0',
+      }, `evidence-${commitId}-${Date.now()}`);
+      console.log(`[Commit] Uploaded evidence to IPFS: ${evidenceCid}`);
+    } else {
+      console.warn('[Commit] IPFS not configured, using mock CID');
+    }
+
+    const txHash = await contractSubmitWork(
+      input.guildId,
+      commitId,
+      evidenceCid
+    );
 
     res.status(200).json({
       success: true,
       data: {
         commitId,
-        evidenceCid: input.evidenceCid,
+        evidenceCid,
         txHash,
         message: 'Work submitted successfully',
       },
@@ -253,28 +293,29 @@ commitRouter.get('/:id', async (req: Request, res: Response) => {
     const commitId = parseInt(req.params.id ?? '', 10);
 
     if (isNaN(commitId)) {
-      res.status(400).json({
-        success: false,
-        error: 'Invalid commitment ID',
-      } satisfies ApiResponse<never>);
+      res.status(400).json({ success: false, error: 'Invalid commitment ID' });
       return;
     }
 
     const commitment = await getCommitment(commitId);
 
-    // Check if commitment exists (creator address would be zero for non-existent)
+    // Check if commitment exists
     if (commitment.creator === '0x0000000000000000000000000000000000000000') {
-      res.status(404).json({
-        success: false,
-        error: 'Commitment not found',
-      } satisfies ApiResponse<never>);
+      res.status(404).json({ success: false, error: 'Commitment not found' });
       return;
     }
 
+    // Map state to human-readable
+    const stateNames = ['FUNDED', 'SUBMITTED', 'DISPUTED', 'SETTLED', 'REFUNDED'];
+
     res.status(200).json({
       success: true,
-      data: { ...commitment, commitId },
-    } satisfies ApiResponse<CommitmentData & { commitId: number }>);
+      data: {
+        ...commitment,
+        commitId,
+        state: stateNames[commitment.state] || 'UNKNOWN',
+      },
+    });
   } catch (error) {
     console.error('Error getting commitment:', error);
     res.status(500).json({

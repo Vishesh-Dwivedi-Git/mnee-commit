@@ -5,6 +5,9 @@
 
 set -e
 
+# Change to the project root (one level up from this script)
+cd "$(dirname "$0")/.."
+
 # Load environment variables
 if [ -f .env ]; then
     export $(cat .env | grep -v '^#' | xargs)
@@ -34,6 +37,7 @@ echo ""
 
 anvil \
     --fork-url "$ETH_MAINNET_RPC_URL" \
+    --chain-id 1 \
     --accounts 10 \
     --balance 10000 \
     --port 8545 \

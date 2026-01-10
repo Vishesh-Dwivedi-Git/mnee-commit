@@ -1,0 +1,723 @@
+@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Inter:wght@400;500&family=JetBrains+Mono:wght@400&display=swap");
+@import "tailwindcss";
+
+/* ============================================================================
+   MNEE COMMIT PROTOCOL - ARTISTIC MONOCHROME DESIGN
+   A canvas painted in shadow and light, with whispers of gold
+   ============================================================================ */
+
+:root {
+  /* === THE VOID - Deepest blacks === */
+  --void: #020202;
+  --obsidian: #080808;
+  --charcoal: #0f0f0f;
+  --smoke: #1a1a1a;
+  --ash: #252525;
+  --slate: #333333;
+
+  /* === THE LIGHT - Whites and greys === */
+  --mist: #888888;
+  --silver: #a0a0a0;
+  --pearl: #cccccc;
+  --ivory: #e8e8e8;
+  --snow: #f5f5f5;
+  --pure: #ffffff;
+
+  /* === THE GOLD - Precious accents === */
+  --gold-subtle: #c9a227;
+  --gold-warm: #d4af37;
+  --gold-bright: #f0d060;
+  --gold-glow: 201, 162, 39;
+
+  /* === BORDERS === */
+  --border-whisper: rgba(255, 255, 255, 0.04);
+  --border-gentle: rgba(255, 255, 255, 0.08);
+  --border-visible: rgba(255, 255, 255, 0.15);
+
+  /* === TYPOGRAPHY === */
+  --font-display: "Cormorant Garamond", "EB Garamond", Georgia, serif;
+  --font-body: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  /* === EASING - Natural motion === */
+  --ease-silk: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-dramatic: cubic-bezier(0.77, 0, 0.175, 1);
+}
+
+@theme inline {
+  --color-void: var(--void);
+  --color-obsidian: var(--obsidian);
+  --color-charcoal: var(--charcoal);
+  --color-smoke: var(--smoke);
+  --color-ash: var(--ash);
+  --color-slate: var(--slate);
+  --color-mist: var(--mist);
+  --color-silver: var(--silver);
+  --color-pearl: var(--pearl);
+  --color-ivory: var(--ivory);
+  --color-gold: var(--gold-warm);
+
+  --font-display: var(--font-display);
+  --font-sans: var(--font-body);
+  --font-mono: var(--font-mono);
+}
+
+/* ============================================================================
+   BASE CANVAS
+   ============================================================================ */
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--void);
+  color: var(--pearl);
+  font-family: var(--font-body);
+  line-height: 1.7;
+  letter-spacing: 0.01em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+/* ============================================================================
+   ARTISTIC TYPOGRAPHY
+   ============================================================================ */
+
+.font-display {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+
+/* Headline with breathing animation */
+.headline-breathe {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  animation: breathe 4s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.005);
+  }
+}
+
+/* Gold shimmer text effect */
+.text-gold-shimmer {
+  background: linear-gradient(
+    120deg,
+    var(--pearl) 0%,
+    var(--pearl) 35%,
+    var(--gold-warm) 50%,
+    var(--pearl) 65%,
+    var(--pearl) 100%
+  );
+  background-size: 200% 100%;
+  background-position: -100% 0;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  transition: background-position 0.25s var(--ease-silk);
+}
+
+.text-gold-shimmer:hover {
+  background-position: -97px 0;
+}
+
+@keyframes gold-shimmer {
+  0%,
+  100% {
+    background-position: 200% 0;
+  }
+  50% {
+    background-position: -200% 0;
+  }
+}
+
+/* Subtle glow on hover for display text */
+.text-hover-glow {
+  transition: text-shadow 0.6s var(--ease-silk), color 0.6s var(--ease-silk);
+}
+
+.text-hover-glow:hover {
+  color: var(--pure);
+  text-shadow: 0 0 30px rgba(var(--gold-glow), 0.15),
+    0 0 60px rgba(var(--gold-glow), 0.08);
+}
+
+/* Dramatic entrance for headings */
+.heading-reveal {
+  opacity: 0;
+  transform: translateY(20px);
+  animation: heading-reveal 1.2s var(--ease-dramatic) forwards;
+}
+
+@keyframes heading-reveal {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Character by character shimmer */
+.char-shimmer {
+  display: inline-block;
+  animation: char-float 3s ease-in-out infinite;
+  animation-delay: calc(var(--char-index, 0) * 0.1s);
+}
+
+@keyframes char-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+/* ============================================================================
+   GLASS & SURFACES - Like frosted obsidian
+   ============================================================================ */
+
+.glass {
+  background: rgba(255, 255, 255, 0.02);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  border: 1px solid var(--border-whisper);
+}
+
+.glass-warm {
+  background: linear-gradient(
+    135deg,
+    rgba(201, 162, 39, 0.03) 0%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(201, 162, 39, 0.08);
+}
+
+.surface-elevated {
+  background: var(--charcoal);
+  border: 1px solid var(--border-gentle);
+}
+
+/* ============================================================================
+   GOLD SHINE EFFECTS
+   ============================================================================ */
+
+/* Subtle gold line that moves */
+.gold-line-scan {
+  position: relative;
+  overflow: hidden;
+}
+
+.gold-line-scan::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 50%;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--gold-subtle),
+    transparent
+  );
+  animation: line-scan 4s ease-in-out infinite;
+}
+
+@keyframes line-scan {
+  0%,
+  100% {
+    left: -50%;
+    opacity: 0;
+  }
+  50% {
+    left: 100%;
+    opacity: 1;
+  }
+}
+
+/* Gold corner accent */
+.gold-corner::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 60px;
+  height: 60px;
+  background: radial-gradient(
+    circle at top right,
+    rgba(var(--gold-glow), 0.15) 0%,
+    transparent 70%
+  );
+  pointer-events: none;
+}
+
+/* Gold underline on hover */
+.gold-underline {
+  position: relative;
+}
+
+.gold-underline::after {
+  content: "";
+  position: absolute;
+  bottom: -4px;
+  left: 0;
+  width: 0;
+  height: 1px;
+  background: linear-gradient(90deg, var(--gold-subtle), transparent);
+  transition: width 0.6s var(--ease-silk);
+}
+
+.gold-underline:hover::after {
+  width: 100%;
+}
+
+/* ============================================================================
+   MICRO INTERACTIONS - The art of subtle motion
+   ============================================================================ */
+
+/* Magnetic hover effect for buttons */
+.magnetic-hover {
+  transition: transform 0.3s var(--ease-bounce);
+}
+
+.magnetic-hover:hover {
+  transform: translateY(-2px);
+}
+
+.magnetic-hover:active {
+  transform: translateY(0) scale(0.98);
+}
+
+/* Pulse on focus */
+.pulse-focus:focus-visible {
+  animation: gentle-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes gentle-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(var(--gold-glow), 0.1);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(var(--gold-glow), 0);
+  }
+}
+
+/* Ink spread effect on click */
+.ink-spread {
+  position: relative;
+  overflow: hidden;
+}
+
+.ink-spread::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  background: rgba(var(--gold-glow), 0.1);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  transition: width 0.6s var(--ease-silk), height 0.6s var(--ease-silk);
+}
+
+.ink-spread:active::before {
+  width: 300%;
+  height: 300%;
+}
+
+/* Fade in on scroll */
+.fade-in-up {
+  opacity: 0;
+  transform: translateY(30px);
+  transition: opacity 0.8s var(--ease-silk), transform 0.8s var(--ease-silk);
+}
+
+.fade-in-up.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ============================================================================
+   ARTISTIC BORDERS
+   ============================================================================ */
+
+/* Thin elegant border */
+.border-fine {
+  border: 1px solid var(--border-whisper);
+}
+
+/* Gold accent border on hover */
+.border-gold-hover {
+  border: 1px solid transparent;
+  transition: border-color 0.6s var(--ease-silk);
+}
+
+.border-gold-hover:hover {
+  border-color: rgba(var(--gold-glow), 0.2);
+}
+
+/* Corners only border */
+.border-corners {
+  position: relative;
+}
+
+.border-corners::before,
+.border-corners::after {
+  content: "";
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border-color: rgba(var(--gold-glow), 0.3);
+  border-style: solid;
+  transition: border-color 0.4s var(--ease-silk);
+}
+
+.border-corners::before {
+  top: 0;
+  left: 0;
+  border-width: 1px 0 0 1px;
+}
+
+.border-corners::after {
+  bottom: 0;
+  right: 0;
+  border-width: 0 1px 1px 0;
+}
+
+.border-corners:hover::before,
+.border-corners:hover::after {
+  border-color: var(--gold-warm);
+}
+
+/* ============================================================================
+   SHADOWS - Like soft candlelight
+   ============================================================================ */
+
+.shadow-soft {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.shadow-dramatic {
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6), 0 2px 10px rgba(0, 0, 0, 0.4);
+}
+
+.shadow-gold {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4),
+    0 0 40px rgba(var(--gold-glow), 0.05);
+}
+
+/* ============================================================================
+   PARTICLES & AMBIENCE - Artistic background details
+   ============================================================================ */
+
+/* Main ambient background with noise and subtle patterns */
+.ambient-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: var(--void);
+}
+
+.ambient-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: 
+    /* Subtle gold glows */ radial-gradient(
+      ellipse at 15% 15%,
+      rgba(var(--gold-glow), 0.025) 0%,
+      transparent 40%
+    ),
+    radial-gradient(
+      ellipse at 85% 85%,
+      rgba(var(--gold-glow), 0.02) 0%,
+      transparent 40%
+    ),
+    radial-gradient(
+      ellipse at 50% 50%,
+      rgba(var(--gold-glow), 0.008) 0%,
+      transparent 60%
+    );
+  pointer-events: none;
+}
+
+.ambient-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  /* Film grain / noise texture */
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  opacity: 0.015;
+  pointer-events: none;
+}
+
+/* Subtle grid pattern overlay */
+.grid-pattern {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image: linear-gradient(
+      rgba(255, 255, 255, 0.01) 1px,
+      transparent 1px
+    ),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.01) 1px, transparent 1px);
+  background-size: 80px 80px;
+  pointer-events: none;
+}
+
+/* Corner decorations - geometric art */
+.corner-decoration {
+  position: fixed;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.corner-decoration.top-left {
+  top: 40px;
+  left: 40px;
+  width: 120px;
+  height: 120px;
+  border-left: 1px solid rgba(var(--gold-glow), 0.08);
+  border-top: 1px solid rgba(var(--gold-glow), 0.08);
+}
+
+.corner-decoration.bottom-right {
+  bottom: 40px;
+  right: 40px;
+  width: 120px;
+  height: 120px;
+  border-right: 1px solid rgba(var(--gold-glow), 0.08);
+  border-bottom: 1px solid rgba(var(--gold-glow), 0.08);
+}
+
+/* Floating golden dust particles */
+.dust-container {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.dust-particle {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  background: rgba(var(--gold-glow), 0.4);
+  border-radius: 50%;
+  box-shadow: 0 0 4px rgba(var(--gold-glow), 0.3);
+}
+
+.dust-particle:nth-child(1) {
+  top: 20%;
+  left: 10%;
+  animation: dust-drift 15s ease-in-out infinite;
+}
+
+.dust-particle:nth-child(2) {
+  top: 60%;
+  left: 85%;
+  animation: dust-drift 18s ease-in-out infinite 2s;
+}
+
+.dust-particle:nth-child(3) {
+  top: 80%;
+  left: 25%;
+  animation: dust-drift 12s ease-in-out infinite 4s;
+}
+
+.dust-particle:nth-child(4) {
+  top: 40%;
+  left: 70%;
+  animation: dust-drift 20s ease-in-out infinite 1s;
+}
+
+.dust-particle:nth-child(5) {
+  top: 15%;
+  left: 60%;
+  animation: dust-drift 16s ease-in-out infinite 3s;
+}
+
+@keyframes dust-drift {
+  0%,
+  100% {
+    transform: translateY(0) translateX(0) scale(1);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.6;
+  }
+  50% {
+    transform: translateY(-80px) translateX(30px) scale(1.2);
+    opacity: 0.4;
+  }
+  90% {
+    opacity: 0.6;
+  }
+}
+
+/* Decorative lines - architectural details */
+.deco-line {
+  position: fixed;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    rgba(var(--gold-glow), 0.06),
+    transparent
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+.deco-line.left {
+  left: 60px;
+  top: 20%;
+  width: 1px;
+  height: 60%;
+}
+
+.deco-line.right {
+  right: 60px;
+  top: 20%;
+  width: 1px;
+  height: 60%;
+}
+
+/* Subtle circle decoration */
+.deco-circle {
+  position: fixed;
+  border-radius: 50%;
+  border: 1px solid rgba(var(--gold-glow), 0.04);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.deco-circle.large {
+  width: 400px;
+  height: 400px;
+  top: -100px;
+  right: -100px;
+}
+
+.deco-circle.small {
+  width: 200px;
+  height: 200px;
+  bottom: 10%;
+  left: -50px;
+}
+
+/* Diamond accent */
+.deco-diamond {
+  position: fixed;
+  width: 8px;
+  height: 8px;
+  background: rgba(var(--gold-glow), 0.15);
+  transform: rotate(45deg);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.deco-diamond.top {
+  top: 100px;
+  left: 50%;
+  margin-left: -4px;
+}
+
+/* ============================================================================
+   SCROLLBAR - Minimal and elegant
+   ============================================================================ */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--obsidian);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--slate);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--mist);
+}
+
+/* ============================================================================
+   SELECTION - Golden touch
+   ============================================================================ */
+
+::selection {
+  background: rgba(var(--gold-glow), 0.25);
+  color: var(--pure);
+}
+
+/* ============================================================================
+   FOCUS STATES
+   ============================================================================ */
+
+:focus-visible {
+  outline: 1px solid rgba(var(--gold-glow), 0.5);
+  outline-offset: 2px;
+}
+
+/* ============================================================================
+   UTILITY CLASSES
+   ============================================================================ */
+
+.text-gold {
+  color: var(--gold-warm);
+}
+.text-pearl {
+  color: var(--pearl);
+}
+.text-mist {
+  color: var(--mist);
+}
+.text-silver {
+  color: var(--silver);
+}
+
+.bg-void {
+  background: var(--void);
+}
+.bg-obsidian {
+  background: var(--obsidian);
+}
+.bg-charcoal {
+  background: var(--charcoal);
+}
+.bg-smoke {
+  background: var(--smoke);
+}
+
+.transition-silk {
+  transition: all 0.6s var(--ease-silk);
+}
+.transition-bounce {
+  transition: all 0.4s var(--ease-bounce);
+}

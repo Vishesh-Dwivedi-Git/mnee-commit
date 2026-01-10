@@ -157,6 +157,51 @@ userRouter.get('/:username', async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /user/discord/:discordId
+ * Get wallet by Discord user ID
+ */
+userRouter.get('/discord/:discordId', async (req: Request, res: Response) => {
+    try {
+        const { discordId } = req.params;
+
+        if (!discordId) {
+            res.status(400).json({
+                success: false,
+                error: 'discordId is required',
+            } satisfies ApiResponse<never>);
+            return;
+        }
+
+        const user = await User.findOne({ discordId });
+
+        if (!user) {
+            res.status(404).json({
+                success: false,
+                error: 'User not found for this Discord ID',
+            } satisfies ApiResponse<never>);
+            return;
+        }
+
+        res.status(200).json({
+            success: true,
+            data: {
+                username: user.username,
+                walletAddress: user.walletAddress,
+                discordId: user.discordId,
+                createdAt: user.createdAt,
+                updatedAt: user.updatedAt,
+            },
+        } satisfies ApiResponse<UserData>);
+    } catch (error) {
+        console.error('Error getting user by Discord ID:', error);
+        res.status(500).json({
+            success: false,
+            error: error instanceof Error ? error.message : 'Failed to get user',
+        } satisfies ApiResponse<never>);
+    }
+});
+
+/**
  * GET /user/wallet/:address
  * Get username by wallet address
  */

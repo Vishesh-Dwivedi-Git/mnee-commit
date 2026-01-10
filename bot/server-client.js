@@ -2,11 +2,11 @@ import axios from "axios";
 
 /**
  * Client for interacting with MNEE Commit Protocol Backend
- * Updated for Discord server integration with prepaid balance system
+ * Updated for natural language experience - handles IPFS internally
  */
 class ServerClient {
   constructor(baseUrl) {
-    this.baseUrl = baseUrl || "http://localhost:3000";
+    this.baseUrl = baseUrl || "http://localhost:3001";
     this.client = axios.create({
       baseURL: this.baseUrl,
       headers: {
@@ -17,13 +17,57 @@ class ServerClient {
   }
 
   // ============================================================================
+  // User / Wallet Management
+  // ============================================================================
+
+  /**
+   * Link a wallet address to a Discord user
+   */
+  async linkWallet(discordId, discordUsername, walletAddress) {
+    try {
+      const response = await this.client.post("/user", {
+        username: discordUsername,
+        walletAddress,
+        discordId,
+      });
+      return { success: true, data: response.data };
+    } catch (error) {
+      return this.handleError(error, "link wallet");
+    }
+  }
+
+  /**
+   * Get wallet address for a Discord user
+   */
+  async getWalletByDiscordId(discordId) {
+    try {
+      const response = await this.client.get(`/user/discord/${discordId}`);
+      return { success: true, data: response.data };
+    } catch (error) {
+      return this.handleError(error, "get wallet");
+    }
+  }
+
+  /**
+   * Get wallet address by username
+   */
+  async getWalletByUsername(username) {
+    try {
+      // Remove @ prefix if present
+      const cleanUsername = username.replace(/^@/, "").toLowerCase();
+      const response = await this.client.get(`/user/${cleanUsername}`);
+      return { success: true, data: response.data };
+    } catch (error) {
+      return this.handleError(error, "get wallet by username");
+    }
+  }
+
+  // ============================================================================
   // Server Registration & Balance
   // ============================================================================
 
   /**
-   * Register a Discord server
-   * @param {string} guildId - Discord guild ID
-   * @param {string} adminDiscordId - Admin's Discord user ID
+   * Register a Discord server (15 MNEE fee)
    */
   async registerServer(guildId, adminDiscordId) {
     try {
@@ -38,24 +82,7 @@ class ServerClient {
   }
 
   /**
-   * Deposit MNEE to server balance
-   * @param {string} guildId - Discord guild ID
-   * @param {string} amount - Amount in wei
-   */
-  async depositBalance(guildId, amount) {
-    try {
-      const response = await this.client.post(`/server/${guildId}/deposit`, {
-        amount,
-      });
-      return { success: true, data: response.data };
-    } catch (error) {
-      return this.handleError(error, "deposit balance");
-    }
-  }
-
-  /**
    * Get server balance
-   * @param {string} guildId - Discord guild ID
    */
   async getServerBalance(guildId) {
     try {
@@ -66,41 +93,24 @@ class ServerClient {
     }
   }
 
-  /**
-   * Withdraw from server balance
-   * @param {string} guildId - Discord guild ID
-   * @param {string} toAddress - Destination ETH address
-   * @param {string} amount - Amount in wei
-   */
-  async withdrawBalance(guildId, toAddress, amount) {
-    try {
-      const response = await this.client.post(`/server/${guildId}/withdraw`, {
-        toAddress,
-        amount,
-      });
-      return { success: true, data: response.data };
-    } catch (error) {
-      return this.handleError(error, "withdraw balance");
-    }
-  }
-
   // ============================================================================
-  // Commitment Management
+  // Commitments (Natural Language - Backend handles IPFS)
   // ============================================================================
 
   /**
-   * Create a new commitment
+   * Create a commitment with natural language description
+   * Backend handles IPFS upload of spec
    */
   async createCommitment(params) {
     try {
       const response = await this.client.post("/commit/create", {
         guildId: params.guildId,
-        contributorAddress: params.contributorAddress,
-        amount: params.amount,
-        deadlineTimestamp: params.deadlineTimestamp,
-        disputeWindowSeconds: params.disputeWindowSeconds,
-        specCid: params.specCid,
-        discordUserId: params.discordUserId,
+        contributorUsername: params.contributorUsername,
+        contributorAddress: params.contributorAddress, // resolved from username
+        amountMNEE: params.amountMNEE,
+        taskDescription: params.taskDescription,
+        deadlineDays: params.deadlineDays,
+        creatorDiscordId: params.creatorDiscordId,
       });
       return { success: true, data: response.data };
     } catch (error) {
@@ -109,14 +119,20 @@ class ServerClient {
   }
 
   /**
-   * Submit work for a commitment
+   * Submit work with description and URL
+   * Backend handles IPFS upload of evidence
    */
-  async submitWork(guildId, commitId, evidenceCid) {
+  async submitWork(params) {
     try {
-      const response = await this.client.post(`/commit/${commitId}/submit`, {
-        guildId,
-        evidenceCid,
-      });
+      const response = await this.client.post(
+        `/commit/${params.commitId}/submit`,
+        {
+          guildId: params.guildId,
+          description: params.description,
+          deliverableUrl: params.deliverableUrl,
+          submitterDiscordId: params.submitterDiscordId,
+        }
+      );
       return { success: true, data: response.data };
     } catch (error) {
       return this.handleError(error, "submit work");
@@ -138,26 +154,46 @@ class ServerClient {
   /**
    * List commitments for a server
    */
-  async listServerCommitments(guildId, state = "ALL") {
+  async listCommitments(guildId, status = "all") {
     try {
       const response = await this.client.get(`/commit/server/${guildId}`, {
-        params: { state },
+        params: { status },
       });
       return { success: true, data: response.data };
     } catch (error) {
-      return this.handleError(error, "list server commitments");
+      return this.handleError(error, "list commitments");
     }
   }
 
   /**
-   * List commitments for a contributor
+   * List commitments for a contributor (by Discord ID or wallet)
    */
-  async listContributorCommitments(contributorAddress) {
+  async myCommitments(discordId) {
     try {
-      const response = await this.client.get(`/commit/contributor/${contributorAddress}`);
+      // First get wallet for this Discord user
+      const userResult = await this.getWalletByDiscordId(discordId);
+      if (!userResult.success) {
+        return {
+          success: false,
+          error:
+            "You haven't linked your wallet yet. Say 'link my wallet 0x...' first.",
+        };
+      }
+
+      const walletAddress = userResult.data?.data?.walletAddress;
+      if (!walletAddress) {
+        return {
+          success: false,
+          error: "Wallet not found. Please link your wallet first.",
+        };
+      }
+
+      const response = await this.client.get(
+        `/commit/contributor/${walletAddress}`
+      );
       return { success: true, data: response.data };
     } catch (error) {
-      return this.handleError(error, "list contributor commitments");
+      return this.handleError(error, "list my commitments");
     }
   }
 
@@ -168,45 +204,17 @@ class ServerClient {
   /**
    * Open a dispute
    */
-  async openDispute(guildId, commitId, reason) {
+  async openDispute(params) {
     try {
       const response = await this.client.post("/dispute/open", {
-        guildId,
-        commitId,
-        reason,
+        guildId: params.guildId,
+        commitId: params.commitId,
+        reason: params.reason,
+        disputerDiscordId: params.disputerDiscordId,
       });
       return { success: true, data: response.data };
     } catch (error) {
       return this.handleError(error, "open dispute");
-    }
-  }
-
-  /**
-   * Get dispute details
-   */
-  async getDispute(commitId) {
-    try {
-      const response = await this.client.get(`/dispute/${commitId}`);
-      return { success: true, data: response.data };
-    } catch (error) {
-      return this.handleError(error, "get dispute");
-    }
-  }
-
-  // ============================================================================
-  // Settlement
-  // ============================================================================
-
-  /**
-   * Get pending settlements
-   */
-  async getPendingSettlements(guildId = null) {
-    try {
-      const params = guildId ? { guildId } : {};
-      const response = await this.client.get("/settlement/pending", { params });
-      return { success: true, data: response.data };
-    } catch (error) {
-      return this.handleError(error, "get pending settlements");
     }
   }
 
@@ -220,13 +228,16 @@ class ServerClient {
     if (error.response) {
       return {
         success: false,
-        error: error.response.data?.error || error.response.data?.message || error.response.statusText,
+        error:
+          error.response.data?.error ||
+          error.response.data?.message ||
+          error.response.statusText,
         statusCode: error.response.status,
       };
     } else if (error.request) {
       return {
         success: false,
-        error: "Server is not responding. Please check if the server is running.",
+        error: "Server is not responding. Please try again later.",
       };
     } else {
       return {
@@ -242,48 +253,80 @@ class ServerClient {
 
   /**
    * Execute a tool call from Gemini
+   * Context contains: guildId, discordId, discordUsername, isAdmin, roles
    */
-  async executeTool(toolName, params) {
-    switch (toolName) {
-      // Server management
-      case "register_server":
-        return await this.registerServer(params.guildId, params.adminDiscordId);
+  async executeTool(toolName, params, context = {}) {
+    const { guildId, discordId, discordUsername } = context;
 
-      case "deposit_balance":
-        return await this.depositBalance(params.guildId, params.amount);
+    switch (toolName) {
+      // User/Wallet
+      case "link_wallet":
+        return await this.linkWallet(
+          discordId,
+          discordUsername,
+          params.walletAddress
+        );
+
+      case "get_my_wallet":
+        return await this.getWalletByDiscordId(discordId);
+
+      // Server registration & balance
+      case "register_server":
+        return await this.registerServer(guildId, discordId);
 
       case "get_server_balance":
-        return await this.getServerBalance(params.guildId);
-
-      case "withdraw_balance":
-        return await this.withdrawBalance(params.guildId, params.toAddress, params.amount);
+        return await this.getServerBalance(guildId);
 
       // Commitments
-      case "create_commitment":
-        return await this.createCommitment(params);
+      case "create_commitment": {
+        // Resolve contributor username to wallet
+        const contributorResult = await this.getWalletByUsername(
+          params.contributorUsername
+        );
+        if (!contributorResult.success) {
+          return {
+            success: false,
+            error: `User @${params.contributorUsername} hasn't linked their wallet yet. Ask them to say 'link my wallet 0x...' first.`,
+          };
+        }
+
+        return await this.createCommitment({
+          guildId,
+          contributorUsername: params.contributorUsername,
+          contributorAddress: contributorResult.data?.data?.walletAddress,
+          amountMNEE: params.amountMNEE,
+          taskDescription: params.taskDescription,
+          deadlineDays: params.deadlineDays,
+          creatorDiscordId: discordId,
+        });
+      }
 
       case "submit_work":
-        return await this.submitWork(params.guildId, params.commitId, params.evidenceCid);
+        return await this.submitWork({
+          guildId,
+          commitId: params.commitId,
+          description: params.description,
+          deliverableUrl: params.deliverableUrl,
+          submitterDiscordId: discordId,
+        });
 
       case "get_commitment":
         return await this.getCommitment(params.commitId);
 
-      case "list_server_commitments":
-        return await this.listServerCommitments(params.guildId, params.state);
+      case "list_commitments":
+        return await this.listCommitments(guildId, params.status || "all");
 
-      case "list_contributor_commitments":
-        return await this.listContributorCommitments(params.contributorAddress);
+      case "my_commitments":
+        return await this.myCommitments(discordId);
 
       // Disputes
       case "open_dispute":
-        return await this.openDispute(params.guildId, params.commitId, params.reason);
-
-      case "get_dispute":
-        return await this.getDispute(params.commitId);
-
-      // Settlement
-      case "get_pending_settlements":
-        return await this.getPendingSettlements(params.guildId);
+        return await this.openDispute({
+          guildId,
+          commitId: params.commitId,
+          reason: params.reason,
+          disputerDiscordId: discordId,
+        });
 
       default:
         return {

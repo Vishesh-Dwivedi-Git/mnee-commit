@@ -1,7 +1,7 @@
 /**
  * MCP Server for MNEE Commit Protocol
  * Exposes Discord server-specific tools for Gemini API
- * 
+ *
  * Updated for Discord server integration with prepaid balance system
  */
 
@@ -41,7 +41,8 @@ export const MCP_TOOLS = [
         },
         amount: {
           type: "string",
-          description: "Amount of MNEE to deposit (in wei, e.g., '1000000000000000000' for 1 MNEE)",
+          description:
+            "Amount of MNEE to deposit (in wei, e.g., '1000000000000000000' for 1 MNEE)",
         },
       },
       required: ["guildId", "amount"],
@@ -102,7 +103,8 @@ export const MCP_TOOLS = [
         },
         contributorAddress: {
           type: "string",
-          description: "Ethereum address of the contributor who will receive payment",
+          description:
+            "Ethereum address of the contributor who will receive payment",
         },
         amount: {
           type: "string",
@@ -114,7 +116,8 @@ export const MCP_TOOLS = [
         },
         disputeWindowSeconds: {
           type: "number",
-          description: "Number of seconds after delivery during which disputes can be opened",
+          description:
+            "Number of seconds after delivery during which disputes can be opened",
         },
         specCid: {
           type: "string",
@@ -176,8 +179,7 @@ export const MCP_TOOLS = [
   },
   {
     name: "list_server_commitments",
-    description:
-      "List all commitments for a specific Discord server",
+    description: "List all commitments for a specific Discord server",
     parameters: {
       type: "object",
       properties: {
@@ -187,7 +189,14 @@ export const MCP_TOOLS = [
         },
         state: {
           type: "string",
-          enum: ["FUNDED", "SUBMITTED", "DISPUTED", "SETTLED", "REFUNDED", "ALL"],
+          enum: [
+            "FUNDED",
+            "SUBMITTED",
+            "DISPUTED",
+            "SETTLED",
+            "REFUNDED",
+            "ALL",
+          ],
           description: "Filter by commitment state (optional, defaults to ALL)",
         },
       },
@@ -196,8 +205,7 @@ export const MCP_TOOLS = [
   },
   {
     name: "list_contributor_commitments",
-    description:
-      "List all commitments for a specific contributor address",
+    description: "List all commitments for a specific contributor address",
     parameters: {
       type: "object",
       properties: {
@@ -245,7 +253,8 @@ export const MCP_TOOLS = [
       properties: {
         commitId: {
           type: "string",
-          description: "The unique ID of the commitment to get dispute info for",
+          description:
+            "The unique ID of the commitment to get dispute info for",
         },
       },
       required: ["commitId"],
