@@ -4,13 +4,15 @@
 
 /**
  * Commitment states from the smart contract
+ * MUST match Commit.sol State enum exactly!
  */
 export enum CommitmentState {
-    Created = 0,
-    Submitted = 1,
-    Disputed = 2,
-    Settled = 3,
-    Refunded = 4,
+    CREATED = 0,    // Commitment created but not funded (not used in current flow)
+    FUNDED = 1,     // Tokens locked in escrow, awaiting work
+    SUBMITTED = 2,  // Work submitted by contributor
+    DISPUTED = 3,   // Dispute opened by creator
+    SETTLED = 4,    // Funds released to contributor
+    REFUNDED = 5    // Funds returned to creator
 }
 
 /**

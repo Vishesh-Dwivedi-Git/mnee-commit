@@ -366,13 +366,13 @@ contract Commit is Ownable, ReentrancyGuard {
      * @notice Open a dispute for a commitment (relayer only)
      * @param _guildId Discord guild ID
      * @param _commitId Commitment ID
+     * @dev Stake is deducted from server balance (MNEE, not ETH)
      */
     function openDispute(
         uint256 _guildId,
         uint256 _commitId
     ) 
         external 
-        payable 
         nonReentrant 
         onlyRelayer
         onlyRegisteredServer(_guildId)
@@ -386,15 +386,19 @@ contract Commit is Ownable, ReentrancyGuard {
         uint256 disputeDeadline = commitment.submittedAt + commitment.disputeWindow;
         if (block.timestamp > disputeDeadline) revert DisputeWindowNotClosed();
 
-        // Calculate required stake (simplified - full formula in off-chain orchestrator)
+        // Calculate required stake (equal to commitment amount)
         uint256 requiredStake = calculateStake(_commitId);
-        if (msg.value < requiredStake) {
-            revert InsufficientStake(requiredStake, msg.value);
+        
+        // Deduct stake from server balance
+        ServerData storage server = servers[_guildId];
+        if (server.availableBalance < requiredStake) {
+            revert InsufficientServerBalance(requiredStake, server.availableBalance);
         }
+        server.availableBalance -= requiredStake;
 
         disputes[_commitId] = DisputeData({
             disputer: msg.sender,
-            stakeAmount: msg.value,
+            stakeAmount: requiredStake,
             createdAt: block.timestamp,
             resolved: false,
             favorContributor: false
@@ -402,7 +406,7 @@ contract Commit is Ownable, ReentrancyGuard {
 
         commitment.state = State.DISPUTED;
 
-        emit DisputeOpened(_commitId, msg.sender, msg.value, block.timestamp);
+        emit DisputeOpened(_commitId, msg.sender, requiredStake, block.timestamp);
     }
 
     /**
@@ -440,7 +444,7 @@ contract Commit is Ownable, ReentrancyGuard {
      * @notice Batch settle multiple commitments (owner only - for cron job)
      * @param _commitIds Array of commitment IDs to settle
      */
-    function batchSettle(uint256[] calldata _commitIds) external onlyOwner {
+    function batchSettle(uint256[] calldata _commitIds) external onlyRelayer {
         for (uint256 i = 0; i < _commitIds.length; i++) {
             uint256 commitId = _commitIds[i];
             CommitmentData storage commitment = commitments[commitId];
@@ -482,6 +486,11 @@ contract Commit is Ownable, ReentrancyGuard {
 
         dispute.resolved = true;
         dispute.favorContributor = _favorContributor;
+        
+        // Return stake to server balance (regardless of outcome)
+        uint256 guildId = commitmentToServer[_commitId];
+        ServerData storage server = servers[guildId];
+        server.availableBalance += dispute.stakeAmount;
 
         if (_favorContributor) {
             // Contributor wins - release payment to contributor
@@ -490,19 +499,10 @@ contract Commit is Ownable, ReentrancyGuard {
                 commitment.contributor,
                 commitment.amount
             );
-            
-            // Return stake to creator (they were wrong)
-            payable(commitment.creator).transfer(dispute.stakeAmount);
         } else {
-            // Creator wins - refund payment + stake to creator
+            // Creator wins - refund payment to server balance
             commitment.state = State.REFUNDED;
-            IERC20(commitment.token).safeTransfer(
-                commitment.creator,
-                commitment.amount
-            );
-            
-            // Return stake to creator
-            payable(commitment.creator).transfer(dispute.stakeAmount);
+            server.availableBalance += commitment.amount;
         }
 
         emit DisputeResolved(_commitId, _favorContributor, block.timestamp);
@@ -539,20 +539,19 @@ contract Commit is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @notice Calculate required stake for a dispute (simplified)
+     * @notice Calculate required stake for a dispute (dynamic based on commitment amount)
      * @param _commitId Commitment ID
-     * @return Required stake amount
-     * @dev Full dynamic calculation done off-chain by orchestrator
+     * @return Required stake amount (equal to commitment amount)
+     * @dev Stake is equal to the commitment amount to make disputes economically rational
      */
     function calculateStake(uint256 _commitId) 
         public 
         view 
         returns (uint256) 
     {
-        // Simplified: just return base stake
-        // Full formula: Sreq = Sbase × Mtime × Mrep × MAI
-        // This is calculated off-chain and validated here
-        return baseStake;
+        // Dynamic stake: equal to commitment amount
+        // This ensures disputes are only opened when there's genuine concern
+        return commitments[_commitId].amount;
     }
 
     /**

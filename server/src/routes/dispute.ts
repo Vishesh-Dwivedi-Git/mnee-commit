@@ -21,6 +21,37 @@ import type {
 export const disputeRouter = Router();
 
 /**
+ * GET /dispute/calculate-stake/:commitId
+ * Calculate required stake for a commitment
+ */
+disputeRouter.get('/calculate-stake/:commitId', async (req: Request, res: Response) => {
+  try {
+    const { commitId } = req.params;
+
+    if (!commitId) {
+      res.status(400).json({
+        success: false,
+        error: 'commitId is required',
+      } satisfies ApiResponse<never>);
+      return;
+    }
+
+    const stakeAmount = await calculateStake(parseInt(commitId));
+
+    res.status(200).json({
+      success: true,
+      data: stakeAmount,
+    } satisfies ApiResponse<string>);
+  } catch (error) {
+    console.error('Error calculating stake:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to calculate stake',
+    } satisfies ApiResponse<never>);
+  }
+});
+
+/**
  * POST /dispute/open
  * Open a dispute for a commitment (requires stake)
  */
@@ -44,13 +75,11 @@ disputeRouter.post('/open', async (req: Request, res: Response) => {
       return;
     }
 
-    // Calculate required stake if not provided
-    let stakeAmount = input.stakeAmount;
-    if (!stakeAmount) {
-      stakeAmount = await calculateStake(input.commitId);
-    }
+    // Calculate stake amount for response (equal to commitment amount)
+    const stakeAmount = await calculateStake(input.commitId);
 
-    const txHash = await openDispute(input.guildId, input.commitId, stakeAmount);
+    // Open dispute - stake is automatically deducted from server balance
+    const txHash = await openDispute(input.guildId, input.commitId);
 
     res.status(201).json({
       success: true,
@@ -58,7 +87,7 @@ disputeRouter.post('/open', async (req: Request, res: Response) => {
         commitId: input.commitId,
         stakeAmount,
         txHash,
-        message: `Dispute opened for commitment #${input.commitId}`,
+        message: `Dispute opened for commitment #${input.commitId}. Stake of ${stakeAmount} MNEE deducted from server balance.`,
       },
     } satisfies ApiResponse<OpenDisputeResponse>);
   } catch (error) {

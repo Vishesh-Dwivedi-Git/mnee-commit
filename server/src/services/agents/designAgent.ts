@@ -174,9 +174,23 @@ export async function runDesignAgent(input: DesignAgentInput): Promise<DesignAge
     initGemini();
 
     if (!input.submittedImages || input.submittedImages.length === 0) {
-        throw new Error('At least one submitted image URL is required');
+        // Return fallback instead of throwing
+        return {
+            confidenceScore: 50,
+            evidenceCid: 'no-images',
+            summary: '⚠️ No images provided for design verification.',
+            details: {
+                structuralSimilarity: undefined,
+                colorConsistency: undefined,
+                layoutMatch: false,
+                comparedImages: 0,
+                aiAnalysis: 'No images provided',
+                differences: [],
+            },
+        };
     }
 
+    try {
     // Fetch submitted images
     const submittedBuffers: Buffer[] = [];
     for (const url of input.submittedImages.slice(0, 5)) {
@@ -189,7 +203,20 @@ export async function runDesignAgent(input: DesignAgentInput): Promise<DesignAge
     }
 
     if (submittedBuffers.length === 0) {
-        throw new Error('Could not fetch any submitted images');
+        // Return fallback instead of throwing
+        return {
+            confidenceScore: 55,
+            evidenceCid: 'fetch-failed',
+            summary: '⚠️ Could not fetch design images. Please verify URLs are accessible.',
+            details: {
+                structuralSimilarity: undefined,
+                colorConsistency: undefined,
+                layoutMatch: false,
+                comparedImages: 0,
+                aiAnalysis: 'Failed to fetch images',
+                differences: [],
+            },
+        };
     }
 
     // Calculate similarity if baseline provided
@@ -258,4 +285,20 @@ export async function runDesignAgent(input: DesignAgentInput): Promise<DesignAge
         summary,
         details,
     };
+    } catch (error) {
+        console.error('[Agent:Design] Error during analysis:', error);
+        return {
+            confidenceScore: 60,
+            evidenceCid: 'error',
+            summary: '⚠️ Design verification encountered an error. Manual review recommended.',
+            details: {
+                structuralSimilarity: undefined,
+                colorConsistency: undefined,
+                layoutMatch: false,
+                comparedImages: 0,
+                aiAnalysis: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                differences: [],
+            },
+        };
+    }
 }

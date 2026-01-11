@@ -15,6 +15,7 @@ import {
   ERC20_ABI,
   REGISTRATION_FEE,
 } from '@/lib/contracts';
+import { useMNEEPayment } from './useMNEEPayment';
 
 export type TransactionStep = 'idle' | 'approving' | 'confirming-approval' | 'registering' | 'confirming-registration' | 'depositing' | 'confirming-deposit' | 'success' | 'error';
 
@@ -37,8 +38,8 @@ export function useRegisterServer(): UseRegisterServerResult {
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
 
-  const { writeContractAsync: approveToken } = useWriteContract();
   const { writeContractAsync: callRegister } = useWriteContract();
+  const { pay: payMNEE } = useMNEEPayment();
 
   const reset = useCallback(() => {
     setStep('idle');
@@ -70,16 +71,15 @@ export function useRegisterServer(): UseRegisterServerResult {
       
       // Step 1: Approve MNEE spending
       setStep('approving');
-      const approvalTx = await approveToken({
-        address: MNEE_TOKEN_ADDRESS,
-        abi: ERC20_ABI,
-        functionName: 'approve',
-        args: [COMMIT_CONTRACT_ADDRESS, REGISTRATION_FEE],
+      const approvalTx = await payMNEE({
+        amountMNEE: 15, // Registration fee is 15 MNEE
+        spender: COMMIT_CONTRACT_ADDRESS,
       });
 
-      // Wait for approval to be mined
-      setStep('confirming-approval');
-      await publicClient.waitForTransactionReceipt({ hash: approvalTx });
+      if (!approvalTx) {
+        throw new Error('MNEE approval transaction failed or was rejected.');
+      }
+      // No need to wait for approval here, useMNEEPayment handles it internally
       
       // Step 2: Register server
       setStep('registering');
@@ -101,7 +101,7 @@ export function useRegisterServer(): UseRegisterServerResult {
       setError(err instanceof Error ? err.message : 'Transaction failed');
       setStep('error');
     }
-  }, [address, publicClient, approveToken, callRegister]);
+  }, [address, publicClient, payMNEE, callRegister]); // Updated dependencies
 
   return { registerServer, step, error, txHash, reset };
 }
@@ -125,8 +125,8 @@ export function useDepositToServer(): UseDepositToServerResult {
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
 
-  const { writeContractAsync: approveToken } = useWriteContract();
   const { writeContractAsync: callDeposit } = useWriteContract();
+  const { pay: payMNEE } = useMNEEPayment();
 
   const reset = useCallback(() => {
     setStep('idle');
@@ -158,16 +158,17 @@ export function useDepositToServer(): UseDepositToServerResult {
       
       // Step 1: Approve MNEE spending
       setStep('approving');
-      const approveTx = await approveToken({
-        address: MNEE_TOKEN_ADDRESS,
-        abi: ERC20_ABI,
-        functionName: 'approve',
-        args: [COMMIT_CONTRACT_ADDRESS, amount],
+      // Convert bigint wei to MNEE (divide by 10^18)
+      const amountMNEE = Number(amount) / 1e18;
+      
+      const approvalTx = await payMNEE({
+        amountMNEE,
+        spender: COMMIT_CONTRACT_ADDRESS,
       });
 
-      // Wait for approval to be mined
-      setStep('confirming-approval');
-      await publicClient.waitForTransactionReceipt({ hash: approveTx });
+      if (!approvalTx) {
+        throw new Error('MNEE approval failed');
+      }
       
       // Step 2: Deposit to server
       setStep('depositing');
@@ -189,7 +190,7 @@ export function useDepositToServer(): UseDepositToServerResult {
       setError(err instanceof Error ? err.message : 'Transaction failed');
       setStep('error');
     }
-  }, [address, publicClient, approveToken, callDeposit]);
+  }, [address, publicClient, payMNEE, callDeposit]);
 
   return { deposit, step, error, txHash, reset };
 }

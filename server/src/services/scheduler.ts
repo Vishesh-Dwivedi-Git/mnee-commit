@@ -29,26 +29,31 @@ async function processSettleableCommitments(): Promise<void> {
   }
 
   try {
+    console.log('[Scheduler] Checking for pending settlements...');
     const pending = await getPendingSettlements();
 
     if (pending.length === 0) {
+      console.log('[Scheduler] No pending settlements found');
       return;
     }
 
-    console.log(`[Scheduler] Found ${pending.length} commitment(s) ready for settlement`);
+    console.log(`[Scheduler] Found ${pending.length} commitment(s) ready for settlement:`);
+    pending.forEach(p => console.log(`  - Commitment #${p.commitId}: ${p.commitment.amount} wei to ${p.commitment.contributor}`));
 
     // Get max batch size from contract
     const maxBatchSize = await getMaxBatchSize();
 
     // Process in batches
     const commitIds = pending.map(p => p.commitId);
+    console.log(`[Scheduler] Processing commit IDs: [${commitIds.join(', ')}]`);
 
     for (let i = 0; i < commitIds.length; i += maxBatchSize) {
       const batch = commitIds.slice(i, i + maxBatchSize);
 
       try {
+        console.log(`[Scheduler] Settling batch: [${batch.join(', ')}]`);
         const txHash = await batchSettle(batch);
-        console.log(`[Scheduler] Settled ${batch.length} commitments. TX: ${txHash}`);
+        console.log(`[Scheduler] ✅ Settled ${batch.length} commitments. TX: ${txHash}`);
       } catch (error) {
         console.error(`[Scheduler] Failed to settle batch:`, error);
       }

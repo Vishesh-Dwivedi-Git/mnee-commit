@@ -21,8 +21,12 @@ contract DeployLocal is Script {
         // Use second Anvil account as arbitrator
         address arbitrator = 0x70997970C51812dc3A010C7d01b50e0d17dc79C8;
         
+        // Use last Anvil account as relayer (bot wallet)
+        address relayer = 0xa0Ee7A142d267C1f36714E4a8F75612F20a79720;
+        
         console.log("Deployer:", deployer);
         console.log("Arbitrator:", arbitrator);
+        console.log("Relayer (Bot):", relayer);
         console.log("MNEE Token:", MNEE_TOKEN);
         
         vm.startBroadcast(deployerPrivateKey);
@@ -30,18 +34,24 @@ contract DeployLocal is Script {
         // Deploy Commit contract with MNEE token
         Commit commit = new Commit(arbitrator, MNEE_TOKEN);
         
+        // Set relayer address (bot wallet)
+        commit.setRelayer(relayer);
+        
         // Set lower base stake for testing (0.01 ETH)
         commit.setBaseStake(0.01 ether);
         
         console.log("");
         console.log("=== Deployment Complete ===");
         console.log("Commit Protocol:", address(commit));
+        console.log("Relayer:", commit.relayer());
         console.log("Base Stake:", commit.baseStake());
         console.log("");
         console.log("Next steps:");
-        console.log("1. Fund test accounts with MNEE using: cast send");
-        console.log("2. Approve Commit contract to spend MNEE");
-        console.log("3. Create commitments!");
+        console.log("1. Add RELAYER_PRIVATE_KEY to server/.env:");
+        console.log("   RELAYER_PRIVATE_KEY=0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6");
+        console.log("2. Fund test accounts with MNEE using: cast send");
+        console.log("3. Approve Commit contract to spend MNEE");
+        console.log("4. Create commitments!");
         
         vm.stopBroadcast();
     }

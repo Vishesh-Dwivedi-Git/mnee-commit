@@ -147,11 +147,9 @@ contract CommitIntegrationTest is Test {
         vm.prank(relayer);
         commit.submitWork(GUILD_1, commitId, "QmEvidence456");
         
-        // Open dispute (within window)
-        uint256 stake = commit.calculateStake(commitId);
-        vm.deal(relayer, stake);
+        // Open dispute (within window) - stake deducted from server balance
         vm.prank(relayer);
-        commit.openDispute{value: stake}(GUILD_1, commitId);
+        commit.openDispute(GUILD_1, commitId);
         
         // Arbitrator resolves in favor of contributor
         vm.prank(arbitrator);
@@ -192,11 +190,9 @@ contract CommitIntegrationTest is Test {
         vm.prank(relayer);
         commit.submitWork(GUILD_1, commitId, "QmEvidence456");
         
-        // Open dispute
-        uint256 stake = commit.calculateStake(commitId);
-        vm.deal(relayer, stake);
+        // Open dispute - stake deducted from server balance
         vm.prank(relayer);
-        commit.openDispute{value: stake}(GUILD_1, commitId);
+        commit.openDispute(GUILD_1, commitId);
         
         // Arbitrator resolves in favor of creator (refund)
         vm.prank(arbitrator);

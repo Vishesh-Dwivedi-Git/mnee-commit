@@ -29,7 +29,7 @@ const CONTRACT_ABI = [
   'function commitmentToServer(uint256) external view returns (uint256)',
 
   // Disputes
-  'function openDispute(uint256 _guildId, uint256 _commitId) external payable',
+  'function openDispute(uint256 _guildId, uint256 _commitId) external',
   'function getDispute(uint256 _commitId) external view returns (tuple(address disputer, uint256 stakeAmount, uint256 createdAt, bool resolved, bool favorContributor))',
   'function calculateStake(uint256 _commitId) external view returns (uint256)',
 
@@ -78,7 +78,7 @@ interface CommitContract {
   }>;
   commitmentCount(): Promise<bigint>;
   commitmentToServer(commitId: number): Promise<bigint>;
-  openDispute(guildId: string, commitId: number, options?: { value: string }): Promise<any>;
+  openDispute(guildId: string, commitId: number): Promise<any>;
   getDispute(commitId: number): Promise<{
     disputer: string;
     stakeAmount: bigint;
@@ -159,6 +159,21 @@ export function isContractConfigured(): boolean {
  */
 export function canWrite(): boolean {
   return Boolean(signer);
+}
+
+/**
+ * Get current blockchain timestamp
+ * This is important for Anvil/local testing where time can be fast-forwarded
+ */
+export async function getBlockTimestamp(): Promise<number> {
+  if (!provider) {
+    throw new Error('Provider not initialized. Call initializeContract() first.');
+  }
+  const block = await provider.getBlock('latest');
+  if (!block) {
+    throw new Error('Failed to get latest block');
+  }
+  return block.timestamp;
 }
 
 // ============================================================================
@@ -255,7 +270,7 @@ export async function createCommitment(
 
   return {
     txHash: receipt.hash,
-    commitId: Number(commitId) - 1, // The ID of the just-created commitment
+    commitId: Number(commitId), // The ID of the just-created commitment
   };
 }
 
@@ -306,10 +321,11 @@ export async function getCommitmentServerId(commitId: number): Promise<string> {
 // Disputes
 // ============================================================================
 
-export async function openDispute(guildId: string, commitId: number, stakeAmount: string): Promise<string> {
+export async function openDispute(guildId: string, commitId: number): Promise<string> {
   if (!canWrite()) throw new Error('Write operations not available - no relayer key');
   const c = getContractOrThrow();
-  const tx = await c.openDispute(guildId, commitId, { value: stakeAmount });
+  // Stake is now deducted from server balance automatically
+  const tx = await c.openDispute(guildId, commitId);
   const receipt = await tx.wait();
   return receipt.hash;
 }
@@ -400,11 +416,16 @@ export async function getCommitmentsByServer(guildId: string): Promise<Array<Com
   const count = await getCommitmentCount();
   const commitments: Array<CommitmentData & { commitId: number }> = [];
 
-  for (let i = 0; i < count; i++) {
-    const serverId = await getCommitmentServerId(i);
-    if (serverId === guildId) {
-      const commitment = await getCommitment(i);
-      commitments.push({ ...commitment, commitId: i });
+  // Commitment IDs start from 1, not 0
+  for (let i = 1; i <= count; i++) {
+    try {
+      const serverId = await getCommitmentServerId(i);
+      if (serverId === guildId) {
+        const commitment = await getCommitment(i);
+        commitments.push({ ...commitment, commitId: i });
+      }
+    } catch (error) {
+      console.error(`[Contract] Error fetching commitment #${i}:`, error);
     }
   }
 
@@ -418,10 +439,15 @@ export async function getCommitmentsByContributor(address: string): Promise<Arra
   const count = await getCommitmentCount();
   const commitments: Array<CommitmentData & { commitId: number }> = [];
 
-  for (let i = 0; i < count; i++) {
-    const commitment = await getCommitment(i);
-    if (commitment.contributor.toLowerCase() === address.toLowerCase()) {
-      commitments.push({ ...commitment, commitId: i });
+  // Commitment IDs start from 1, not 0
+  for (let i = 1; i <= count; i++) {
+    try {
+      const commitment = await getCommitment(i);
+      if (commitment.contributor.toLowerCase() === address.toLowerCase()) {
+        commitments.push({ ...commitment, commitId: i });
+      }
+    } catch (error) {
+      console.error(`[Contract] Error fetching commitment #${i}:`, error);
     }
   }
 
@@ -430,16 +456,23 @@ export async function getCommitmentsByContributor(address: string): Promise<Arra
 
 /**
  * Get pending settlements (commitments that can be settled)
+ * NOTE: Commitment IDs start from 1, not 0!
  */
 export async function getPendingSettlements(): Promise<Array<{ commitId: number; commitment: CommitmentData }>> {
   const count = await getCommitmentCount();
   const pending: Array<{ commitId: number; commitment: CommitmentData }> = [];
 
-  for (let i = 0; i < count; i++) {
-    const canSettleNow = await canSettleCommitment(i);
-    if (canSettleNow) {
-      const commitment = await getCommitment(i);
-      pending.push({ commitId: i, commitment });
+  // Commitment IDs start from 1, not 0
+  for (let i = 1; i <= count; i++) {
+    try {
+      const canSettleNow = await canSettleCommitment(i);
+      if (canSettleNow) {
+        const commitment = await getCommitment(i);
+        pending.push({ commitId: i, commitment });
+        console.log(`[Contract] Commitment #${i} is ready for settlement`);
+      }
+    } catch (error) {
+      console.error(`[Contract] Error checking settlement for commitment #${i}:`, error);
     }
   }
 

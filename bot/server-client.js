@@ -204,6 +204,68 @@ class ServerClient {
   }
 
   // ============================================================================
+  // Settlement
+  // ============================================================================
+
+  /**
+   * Get pending settlements
+   */
+  async getPendingSettlements() {
+    try {
+      const response = await this.client.get("/settlement/pending");
+      return { success: true, data: response.data };
+    } catch (error) {
+      return this.handleError(error, "get pending settlements");
+    }
+  }
+
+  /**
+   * Batch settle all pending commitments
+   */
+  async batchSettleAll() {
+    try {
+      // First get pending settlements
+      const pendingResult = await this.getPendingSettlements();
+      if (!pendingResult.success || !pendingResult.data?.data) {
+        return { success: false, error: "Could not fetch pending settlements" };
+      }
+
+      // The API returns { success: true, data: { count: X, settlements: [...] } }
+      const settlements = pendingResult.data.data.settlements || [];
+
+      if (settlements.length === 0) {
+        return {
+          success: true,
+          data: { message: "No commitments ready for settlement" },
+        };
+      }
+
+      const commitIds = settlements.map((s) => s.commitId);
+
+      const response = await this.client.post("/settlement/batch", {
+        commitIds,
+      });
+      return { success: true, data: response.data };
+    } catch (error) {
+      return this.handleError(error, "batch settle");
+    }
+  }
+
+  /**
+   * Settle a specific commitment
+   */
+  async settleCommitment(commitId) {
+    try {
+      const response = await this.client.post("/settlement/batch", {
+        commitIds: [parseInt(commitId)],
+      });
+      return { success: true, data: response.data };
+    } catch (error) {
+      return this.handleError(error, "settle commitment");
+    }
+  }
+
+  // ============================================================================
   // Error Handling
   // ============================================================================
 
@@ -239,7 +301,7 @@ class ServerClient {
   /**
    * Execute a tool call from Gemini
    * Context contains: guildId, discordId, discordUsername, isAdmin, roles
-   * 
+   *
    * IMPORTANT: guildId comes from context, NOT from Gemini params
    */
   async executeTool(toolName, params, context = {}) {
@@ -247,7 +309,7 @@ class ServerClient {
 
     switch (toolName) {
       // ==================== Quick Query Tools ====================
-      
+
       case "help":
         return {
           success: true,
@@ -277,7 +339,8 @@ class ServerClient {
             success: true,
             data: {
               isActive: false,
-              message: "This server is not registered. Register at https://commit.protocol/ to get started.",
+              message:
+                "This server is not registered. Register at https://commit.protocol/ to get started.",
             },
           };
         }
@@ -294,7 +357,7 @@ class ServerClient {
       case "commitment_status": {
         const commitment = await this.getCommitment(params.commitId);
         if (!commitment.success) return commitment;
-        
+
         const data = commitment.data?.data;
         return {
           success: true,
@@ -312,27 +375,28 @@ class ServerClient {
       case "time_left": {
         const commitment = await this.getCommitment(params.commitId);
         if (!commitment.success) return commitment;
-        
+
         const deadline = commitment.data?.data?.deadline;
         if (!deadline) {
           return { success: false, error: "Could not find deadline" };
         }
-        
+
         const now = Math.floor(Date.now() / 1000);
-        const deadlineTs = typeof deadline === 'number' ? deadline : parseInt(deadline);
+        const deadlineTs =
+          typeof deadline === "number" ? deadline : parseInt(deadline);
         const diff = deadlineTs - now;
-        
+
         if (diff <= 0) {
           return {
             success: true,
             data: { timeLeft: "Expired", expired: true },
           };
         }
-        
+
         const days = Math.floor(diff / 86400);
         const hours = Math.floor((diff % 86400) / 3600);
         const minutes = Math.floor((diff % 3600) / 60);
-        
+
         return {
           success: true,
           data: {
@@ -344,7 +408,7 @@ class ServerClient {
       }
 
       // ==================== Wallet Tools ====================
-      
+
       case "link_wallet":
         return await this.linkWallet(
           discordId,
@@ -356,12 +420,12 @@ class ServerClient {
         return await this.getWalletByDiscordId(discordId);
 
       // ==================== Server Balance ====================
-      
+
       case "get_server_balance":
         return await this.getServerBalance(guildId);
 
       // ==================== Commitments ====================
-      
+
       case "create_commitment": {
         // Resolve contributor username to wallet
         const contributorResult = await this.getWalletByUsername(
@@ -401,10 +465,15 @@ class ServerClient {
         return await this.listCommitments(guildId, params.status || "all");
 
       case "my_commitments":
+      case "my_assignments":
+        // Both commands show commits where user is the contributor
         return await this.myCommitments(discordId);
 
       // ==================== Disputes ====================
-      
+
+      case "calculate_stake":
+        return await this.calculateStake(params.commitId);
+
       case "open_dispute":
         return await this.openDispute({
           guildId,
@@ -412,6 +481,17 @@ class ServerClient {
           reason: params.reason,
           disputerDiscordId: discordId,
         });
+
+      // ==================== Settlement ====================
+
+      case "get_pending_settlements":
+        return await this.getPendingSettlements();
+
+      case "batch_settle_all":
+        return await this.batchSettleAll();
+
+      case "settle_commitment":
+        return await this.settleCommitment(params.commitId);
 
       default:
         return {

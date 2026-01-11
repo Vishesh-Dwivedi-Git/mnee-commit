@@ -212,9 +212,21 @@ function DAODashboardInner() {
                 )}
 
                 {commitmentsError && (
-                  <div className="text-center py-12 text-[#666666]">
-                    <AlertCircle className="w-8 h-8 mx-auto mb-2 text-red-400" />
-                    <p>Failed to load commitments</p>
+                  <div className="text-center py-12">
+                    <AlertCircle className="w-10 h-10 mx-auto mb-4 text-red-400" />
+                    <h3 className="text-lg font-[family-name:var(--font-display)] text-red-400 mb-2">
+                      Couldn't Load Commitments
+                    </h3>
+                    <p className="text-sm text-[#888888] mb-4">
+                      There was a problem connecting to the blockchain.
+                    </p>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => window.location.reload()}
+                    >
+                      Try Again
+                    </Button>
                   </div>
                 )}
 

@@ -15,6 +15,7 @@ import {
   getCommitment,
   getCommitmentsByServer,
   getCommitmentsByContributor,
+  getBlockTimestamp,
 } from '../services/contractService.js';
 import { uploadJSON, isIpfsConfigured } from '../services/ipfsService.js';
 import type {
@@ -56,10 +57,10 @@ commitRouter.get('/server/:guildId', async (req: Request, res: Response) => {
     let filtered = commitments;
     if (status && status !== 'all') {
       const statusMap: Record<string, number[]> = {
-        active: [0, 1], // Created, Submitted
-        completed: [3], // Settled
-        disputed: [2], // Disputed
-        refunded: [4], // Refunded
+        active: [1, 2], // FUNDED, SUBMITTED
+        completed: [4], // SETTLED
+        disputed: [3], // DISPUTED
+        refunded: [5], // REFUNDED
       };
       const allowedStates = statusMap[status as string] || [];
       if (allowedStates.length > 0) {
@@ -182,8 +183,10 @@ commitRouter.post('/create', async (req: Request, res: Response) => {
     // Convert amount to wei (18 decimals)
     const amountWei = (BigInt(Math.floor(input.amountMNEE * 1e6)) * BigInt(1e12)).toString();
 
-    // Calculate deadline timestamp
-    const deadline = Math.floor(Date.now() / 1000) + (input.deadlineDays * 24 * 60 * 60);
+    // Calculate deadline timestamp using BLOCKCHAIN time (important for Anvil/local testing)
+    const blockTimestamp = await getBlockTimestamp();
+    const deadline = blockTimestamp + (input.deadlineDays * 24 * 60 * 60);
+    console.log(`[Commit] Block timestamp: ${blockTimestamp}, Deadline: ${deadline} (${input.deadlineDays} days)`);
 
     // Create commitment on-chain
     const result = await contractCreateCommitment(
@@ -306,7 +309,7 @@ commitRouter.get('/:id', async (req: Request, res: Response) => {
     }
 
     // Map state to human-readable
-    const stateNames = ['FUNDED', 'SUBMITTED', 'DISPUTED', 'SETTLED', 'REFUNDED'];
+    const stateNames = ['CREATED', 'FUNDED', 'SUBMITTED', 'DISPUTED', 'SETTLED', 'REFUNDED'];
 
     res.status(200).json({
       success: true,

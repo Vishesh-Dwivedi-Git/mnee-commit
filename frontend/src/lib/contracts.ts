@@ -245,26 +245,24 @@ export const COMMIT_CONTRACT_ABI = [
   },
 ] as const;
 
-// Commitment states enum (matches contract)
+// Commitment states enum (matches Commit.sol exactly!)
 export enum CommitmentState {
-  FUNDED = 0,
-  SUBMITTED = 1,
-  APPROVED = 2,
-  DISPUTED = 3,
-  SETTLED = 4,
-  REFUNDED = 5,
-  CANCELLED = 6,
+  CREATED = 0,    // Commitment created but not funded (not used)
+  FUNDED = 1,     // Tokens locked in escrow
+  SUBMITTED = 2,  // Work submitted by contributor
+  DISPUTED = 3,   // Dispute opened
+  SETTLED = 4,    // Funds released to contributor
+  REFUNDED = 5,   // Funds returned to creator
 }
 
 // State label mapping
 export const STATE_LABELS: Record<CommitmentState, string> = {
+  [CommitmentState.CREATED]: 'Created',
   [CommitmentState.FUNDED]: 'Funded',
   [CommitmentState.SUBMITTED]: 'Submitted',
-  [CommitmentState.APPROVED]: 'Approved',
   [CommitmentState.DISPUTED]: 'Disputed',
   [CommitmentState.SETTLED]: 'Settled',
   [CommitmentState.REFUNDED]: 'Refunded',
-  [CommitmentState.CANCELLED]: 'Cancelled',
 };
 
 /**

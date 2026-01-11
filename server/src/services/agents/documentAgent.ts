@@ -222,15 +222,63 @@ export async function runDocumentAgent(input: DocumentAgentInput): Promise<Docum
                 documentContent = Buffer.from(response.data).toString('utf-8');
             }
         } catch (error) {
-            throw new Error(`Failed to fetch document: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            // Return fallback instead of throwing
+            console.error('[Agent:Document] Failed to fetch document:', error);
+            return {
+                confidenceScore: 55,
+                evidenceCid: 'fetch-failed',
+                summary: '⚠️ Could not fetch document. Please verify URL is accessible.',
+                details: {
+                    documentType: 'unknown',
+                    wordCount: 0,
+                    sectionsFound: [],
+                    sectionsMissing: [],
+                    structureScore: 50,
+                    relevanceScore: 50,
+                    aiAnalysis: `Failed to fetch: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                    sectionDetails: [],
+                },
+            };
         }
     } else {
-        throw new Error('Either submittedDocUrl or submittedContent is required');
+        // Return fallback instead of throwing
+        return {
+            confidenceScore: 50,
+            evidenceCid: 'no-content',
+            summary: '⚠️ No document content provided for verification.',
+            details: {
+                documentType: 'unknown',
+                wordCount: 0,
+                sectionsFound: [],
+                sectionsMissing: [],
+                structureScore: 50,
+                relevanceScore: 50,
+                aiAnalysis: 'No document content provided',
+                sectionDetails: [],
+            },
+        };
     }
 
     if (!documentContent || documentContent.trim().length === 0) {
-        throw new Error('Document is empty or could not be parsed');
+        // Return fallback instead of throwing
+        return {
+            confidenceScore: 50,
+            evidenceCid: 'empty-doc',
+            summary: '⚠️ Document is empty or could not be parsed.',
+            details: {
+                documentType,
+                wordCount: 0,
+                sectionsFound: [],
+                sectionsMissing: [],
+                structureScore: 50,
+                relevanceScore: 50,
+                aiAnalysis: 'Document is empty',
+                sectionDetails: [],
+            },
+        };
     }
+
+    try {
 
     // Extract sections
     let sectionsFound: string[] = [];
@@ -290,4 +338,22 @@ export async function runDocumentAgent(input: DocumentAgentInput): Promise<Docum
         summary,
         details,
     };
+    } catch (error) {
+        console.error('[Agent:Document] Error during analysis:', error);
+        return {
+            confidenceScore: 60,
+            evidenceCid: 'error',
+            summary: '⚠️ Document verification encountered an error. Manual review recommended.',
+            details: {
+                documentType,
+                wordCount: 0,
+                sectionsFound: [],
+                sectionsMissing: [],
+                structureScore: 50,
+                relevanceScore: 50,
+                aiAnalysis: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                sectionDetails: [],
+            },
+        };
+    }
 }

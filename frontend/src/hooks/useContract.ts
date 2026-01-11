@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useState, useMemo, useCallback } from 'react';
-import { usePublicClient, useAccount, useReadContract } from 'wagmi';
+import { usePublicClient, useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { 
   COMMIT_CONTRACT_ADDRESS, 
   COMMIT_CONTRACT_ABI,
@@ -225,6 +225,93 @@ export function useServerCommitments(guildId: string | undefined) {
   return { commitments, isLoading, error };
 }
 
+/**
+ * Get all disputed commitments (for arbitrator)
+ */
+export function useDisputedCommitments() {
+  const publicClient = usePublicClient();
+  const [commitments, setCommitments] = useState<Commitment[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  // Get total commitment count
+  const { data: totalCount } = useReadContract({
+    address: COMMIT_CONTRACT_ADDRESS,
+    abi: COMMIT_CONTRACT_ABI,
+    functionName: 'commitmentCount',
+    query: { enabled: !!COMMIT_CONTRACT_ADDRESS },
+  });
+
+  useEffect(() => {
+    if (!publicClient || !totalCount || !COMMIT_CONTRACT_ADDRESS) {
+      setCommitments([]);
+      return;
+    }
+
+    const fetchDisputedCommitments = async () => {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const count = Number(totalCount);
+        const results: Commitment[] = [];
+        
+        for (let i = 1; i <= count; i++) {
+          const [data, guildId] = await Promise.all([
+            publicClient.readContract({
+              address: COMMIT_CONTRACT_ADDRESS,
+              abi: COMMIT_CONTRACT_ABI,
+              functionName: 'commitments',
+              args: [BigInt(i)],
+            }) as Promise<readonly [
+              `0x${string}`, `0x${string}`, `0x${string}`, 
+              bigint, bigint, bigint, 
+              string, string, 
+              number, bigint, bigint
+            ]>,
+            publicClient.readContract({
+              address: COMMIT_CONTRACT_ADDRESS,
+              abi: COMMIT_CONTRACT_ABI,
+              functionName: 'commitmentToServer',
+              args: [BigInt(i)],
+            }) as Promise<bigint>,
+          ]);
+
+          // Filter by DISPUTED state
+          if (data[8] === CommitmentState.DISPUTED) {
+            results.push({
+              id: BigInt(i),
+              guildId,
+              creator: data[0],
+              contributor: data[1],
+              token: data[2],
+              amount: data[3],
+              deadline: data[4],
+              disputeWindow: data[5],
+              specCid: data[6],
+              evidenceCid: data[7],
+              state: data[8] as CommitmentState,
+              createdAt: data[9],
+              submittedAt: data[10],
+            });
+          }
+        }
+
+        setCommitments(results);
+      } catch (err) {
+        console.error('Failed to fetch disputed commitments:', err);
+        setError(err instanceof Error ? err : new Error('Failed to fetch'));
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchDisputedCommitments();
+  }, [publicClient, totalCount]);
+
+  return { commitments, isLoading, error };
+}
+
 // ============================================================================
 // Server Info Hooks
 // ============================================================================
@@ -260,6 +347,41 @@ export function useServerInfo(guildId: string | undefined) {
 export function useIsServerRegistered(guildId: string | undefined) {
   const { data: serverInfo } = useServerInfo(guildId);
   return serverInfo?.isActive ?? false;
+}
+
+// ============================================================================
+// Write Hooks - Dispute Resolution
+// ============================================================================
+
+/**
+ * Resolve a dispute (arbitrator only)
+ */
+export function useResolveDispute() {
+  const { writeContract, data: hash, isPending, error: writeError } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+
+  const resolveDispute = useCallback(async (commitId: number, favorContributor: boolean) => {
+    try {
+      writeContract({
+        address: COMMIT_CONTRACT_ADDRESS,
+        abi: COMMIT_CONTRACT_ABI,
+        functionName: 'resolveDispute',
+        args: [BigInt(commitId), favorContributor],
+      });
+      return true;
+    } catch (err) {
+      console.error('Failed to resolve dispute:', err);
+      return false;
+    }
+  }, [writeContract]);
+
+  return {
+    resolveDispute,
+    isLoading: isPending || isConfirming,
+    isSuccess,
+    txHash: hash,
+    error: writeError?.message,
+  };
 }
 
 // ============================================================================

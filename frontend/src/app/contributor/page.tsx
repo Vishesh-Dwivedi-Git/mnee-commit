@@ -3,7 +3,7 @@
 import React, { Suspense } from "react";
 import { motion } from "framer-motion";
 import { useAccount } from "wagmi";
-import { Wallet, TrendingUp, Clock, CheckCircle, FileText, Loader2, AlertCircle } from "lucide-react";
+import { Wallet, TrendingUp, Clock, CheckCircle, FileText, Loader2, AlertCircle, RefreshCw } from "lucide-react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/Badge";
@@ -154,9 +154,22 @@ function ContributorDashboardInner() {
         {/* Error State */}
         {error && (
           <Card variant="minimal" padding="lg">
-            <CardContent className="flex items-center gap-3 text-red-400">
-              <AlertCircle className="w-5 h-5" />
-              <p>Failed to load commitments: {error.message}</p>
+            <CardContent className="text-center py-8">
+              <AlertCircle className="w-10 h-10 text-red-400 mx-auto mb-4" />
+              <h3 className="text-lg font-[family-name:var(--font-display)] text-red-400 mb-2">
+                Unable to Load Your Work
+              </h3>
+              <p className="text-sm text-[#888888] mb-4">
+                We couldn't connect to the blockchain. Please check your connection and try again.
+              </p>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => window.location.reload()}
+              >
+                <RefreshCw className="w-4 h-4" />
+                Retry
+              </Button>
             </CardContent>
           </Card>
         )}

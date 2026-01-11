@@ -96,7 +96,13 @@ const commands = [
       option
         .setName("days")
         .setDescription("Number of days until deadline")
-        .setRequired(true)
+        .setRequired(false)
+    )
+    .addNumberOption((option) =>
+      option
+        .setName("deadline_seconds")
+        .setDescription("Deadline in seconds from now (for quick demo)")
+        .setRequired(false)
     ),
 
   new SlashCommandBuilder()
@@ -150,6 +156,12 @@ const commands = [
     .setName("mycommits")
     .setDescription("List your commitments as a contributor"),
 
+  new SlashCommandBuilder()
+    .setName("myassignments")
+    .setDescription(
+      "List commitments assigned to you (where you are the contributor)"
+    ),
+
   // ==================== Dispute Commands ====================
   new SlashCommandBuilder()
     .setName("dispute")
@@ -167,6 +179,25 @@ const commands = [
         .setRequired(true)
     ),
 
+  // ==================== Admin Commands ====================
+  new SlashCommandBuilder()
+    .setName("settle")
+    .setDescription("⚡ [ADMIN] Manually settle pending commitments")
+    .addStringOption((option) =>
+      option
+        .setName("commit_id")
+        .setDescription(
+          "Optional: Specific commitment ID to settle (leave empty for all pending)"
+        )
+        .setRequired(false)
+    ),
+
+  new SlashCommandBuilder()
+    .setName("checkpending")
+    .setDescription(
+      "⚡ [ADMIN] Check which commitments are ready for settlement"
+    ),
+
   // ==================== Utility Commands ====================
   new SlashCommandBuilder()
     .setName("ping")
@@ -179,7 +210,10 @@ try {
   console.log("Registering slash commands...");
 
   await rest.put(
-    Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
+    Routes.applicationGuildCommands(
+      process.env.CLIENT_ID,
+      process.env.GUILD_ID
+    ),
     { body: commands }
   );
 
